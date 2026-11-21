@@ -5,10 +5,16 @@
 import * as Tone from 'tone'
 import { getProject } from '../project/projectStore.ts'
 import { getLoopStepAtTime, getTicksPerStep } from './clock.ts'
+import { getNotesToPlay } from './instruments.ts'
+import { playMelodyNotes } from './melodySynths.ts'
 import { isLayerSilencedAt } from './recorder.ts'
 import { playDrum } from './samples.ts'
 
 let initialized = false
+
+// A recorded note is released this much before its last 16th ends, so a
+// following note on the same pitch starts cleanly instead of being cut.
+const NOTE_GAP_SECONDS = 0.01
 
 // Call once, after the clock is initialized.
 export function initLayerPlayer(): void {
@@ -25,6 +31,7 @@ function handleStepTime(time: number): void {
   if (step === null) {
     return // count-in: no layers play
   }
+  const stepSeconds = Tone.Time(getTicksPerStep() + 'i').toSeconds()
   for (const layer of getProject().layers) {
     if (layer.muted || isLayerSilencedAt(layer.id, time)) {
       continue
@@ -34,7 +41,13 @@ function handleStepTime(time: number): void {
         playDrum(layer.drum, time)
       }
     }
-    // Melody layers (type 'melody') start playing here in step 29, once
-    // the instruments exist (steps 26-27). Until then they are silent.
+    if (layer.type === 'melody') {
+      for (const note of layer.notes) {
+        if (note.step === step) {
+          const duration = Math.max(0.02, note.length * stepSeconds - NOTE_GAP_SECONDS)
+          playMelodyNotes(layer.instrument, getNotesToPlay(layer.instrument, note.pitch), duration, time)
+        }
+      }
+    }
   }
 }

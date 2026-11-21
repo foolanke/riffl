@@ -24,9 +24,13 @@ export interface MelodyVoice {
 interface NotePlayer {
   triggerAttack(notes: string[], time: number): unknown
   triggerRelease(notes: string[], time: number): unknown
+  triggerAttackRelease(notes: string[], duration: number, time: number): unknown
 }
 
 const voices = new Map<InstrumentName, Record<HandSide, MelodyVoice>>()
+// Recorded melody layers (step 29) play on their own player per
+// instrument, so loop playback never cuts off a note you're playing live.
+const layerPlayers = new Map<InstrumentName, NotePlayer>()
 // Each instrument's effects, built once and shared by both hands.
 const chainInputs = new Map<InstrumentName, Tone.ToneAudioNode>()
 
@@ -40,8 +44,17 @@ export async function loadMelodyInstruments(): Promise<void> {
       left: makeVoice(createNotePlayer(instrument.name)),
       right: makeVoice(createNotePlayer(instrument.name)),
     })
+    layerPlayers.set(instrument.name, createNotePlayer(instrument.name))
   }
   await Tone.loaded()
+}
+
+// Plays one recorded note (all the notes of one gesture) for a set time.
+export function playMelodyNotes(instrument: InstrumentName, notes: string[], durationSeconds: number, time: number): void {
+  const player = layerPlayers.get(instrument)
+  if (player) {
+    player.triggerAttackRelease(notes, durationSeconds, time)
+  }
 }
 
 export function getMelodyVoice(instrument: InstrumentName, side: HandSide): MelodyVoice | null {

@@ -1,9 +1,13 @@
 // Record a take (SPEC steps 12-17, 23-24): drum dropdown, Record button (or Space),
 // mute-layers option, camera confirmation toggle, undo, status, raw playback,
 // detected hits and result.
+// Step 29: the next take is a drum or a melody take (whatever was picked
+// last); a melody take uses the instrument picked under the camera.
 import { useSyncExternalStore } from 'react'
 import { DRUMS, getDrumLabel } from '../audio/drums.ts'
 import type { DrumName } from '../audio/drums.ts'
+import { getInstrumentLabel } from '../audio/instruments.ts'
+import { getSelectedInstrument, subscribeToInstrument } from '../audio/liveMelody.ts'
 import {
   getRecorderState,
   playLastTake,
@@ -11,9 +15,10 @@ import {
   setCameraConfirmOn,
   setMuteLayersWhileRecording,
   setTakeDrum,
+  setTakeKind,
   subscribeToRecorder,
 } from '../audio/recorder.ts'
-import type { RecordStatus } from '../audio/recorder.ts'
+import type { RecordStatus, TakeKind } from '../audio/recorder.ts'
 import { findObject, undoLastTake } from '../project/projectStore.ts'
 import { useProject } from './hooks.ts'
 
@@ -24,12 +29,25 @@ const STATUS_TEXT: Record<RecordStatus, string> = {
   processing: 'Finding hits...',
 }
 
+function getStatusText(status: RecordStatus, kind: TakeKind): string {
+  if (kind === 'melody' && status === 'recording') {
+    return 'RECORDING - pinch to play'
+  }
+  if (kind === 'melody' && status === 'processing') {
+    return 'Snapping notes...'
+  }
+  return STATUS_TEXT[status]
+}
+
 export function RecordPanel() {
   const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
   const take = recorder.lastTake
   const isBusy = recorder.status !== 'idle'
   useProject() // re-render when objects change, so the object text stays current
   const takeObject = findObject(recorder.takeObjectId)
+  const instrument = useSyncExternalStore(subscribeToInstrument, getSelectedInstrument)
+  const melodyTake = recorder.lastMelodyTake
+  const showMelodyReport = recorder.lastTakeKind === 'melody' && melodyTake !== null
 
   let resultText = ''
   if (take && take.snappedSteps.length > 0) {
@@ -60,6 +78,33 @@ export function RecordPanel() {
   return (
     <fieldset>
       <legend>Record</legend>
+      <p>
+        Next take:{' '}
+        <label>
+          <input
+            type="radio"
+            checked={recorder.takeKind === 'drum'}
+            disabled={isBusy}
+            onChange={(event) => {
+              setTakeKind('drum')
+              event.target.blur()
+            }}
+          />{' '}
+          Drum
+        </label>{' '}
+        <label>
+          <input
+            type="radio"
+            checked={recorder.takeKind === 'melody'}
+            disabled={isBusy}
+            onChange={(event) => {
+              setTakeKind('melody')
+              event.target.blur()
+            }}
+          />{' '}
+          Melody ({getInstrumentLabel(instrument)}, pick the instrument under the camera)
+        </label>
+      </p>
       <p>
         <label>
           Drum for next take:{' '}
@@ -111,10 +156,34 @@ export function RecordPanel() {
           Camera confirmation (keep only hits with a hand at the object; off = mic only)
         </label>
       </p>
-      <p>{STATUS_TEXT[recorder.status]}</p>
+      <p>{getStatusText(recorder.status, recorder.takeKind)}</p>
       {recorder.message ? <p>{recorder.message}</p> : null}
 
-      {take ? (
+      {showMelodyReport && melodyTake ? (
+        <div>
+          <p>
+            Last take: {melodyTake.isRetake ? 'retaken' : 'new'} {getInstrumentLabel(melodyTake.instrument)} layer,{' '}
+            {melodyTake.notes.length} notes played (camera lag {melodyTake.cameraLagMs.toFixed(0)} ms subtracted)
+          </p>
+          <ol>
+            {melodyTake.notes.map((note, index) => (
+              <li key={index}>
+                {note.pitch}: {note.startMs.toFixed(0)} ms to {note.endMs.toFixed(0)} ms
+              </li>
+            ))}
+          </ol>
+          {melodyTake.snappedNotes.length > 0 ? (
+            <p>
+              Snapped:{' '}
+              {melodyTake.snappedNotes
+                .map((note) => `${note.pitch} at step ${note.step} for ${note.length}`)
+                .join(', ')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {take && !showMelodyReport ? (
         <div>
           <p>
             Last take: {take.recordedSeconds.toFixed(3)} s recorded (loop is{' '}
