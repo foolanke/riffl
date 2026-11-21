@@ -2,22 +2,31 @@
 import { useEffect, useState } from 'react'
 import { startAudio, playTestBeep } from '../audio/audioEngine.ts'
 import { play, stop } from '../audio/clock.ts'
-import { getProject, updateSettings } from '../project/projectStore.ts'
+import { getProject, toggleLayerMutedByIndex, updateSettings } from '../project/projectStore.ts'
 import { BeatDisplay } from './BeatDisplay.tsx'
+import { LayerList } from './LayerList.tsx'
+import { SampleButtons } from './SampleButtons.tsx'
 import { SetupControls } from './SetupControls.tsx'
 import { useIsPlaying } from './hooks.ts'
 
 export default function App() {
   const [audioStarted, setAudioStarted] = useState(false)
+  const [startStatus, setStartStatus] = useState('Not started.')
   const isPlaying = useIsPlaying()
 
   async function handleStartClick() {
-    await startAudio()
-    playTestBeep()
-    setAudioStarted(true)
+    setStartStatus('Loading sounds...')
+    try {
+      await startAudio()
+      playTestBeep()
+      setAudioStarted(true)
+    } catch (error) {
+      console.error(error)
+      setStartStatus('Could not start audio: ' + String(error))
+    }
   }
 
-  // Keyboard shortcuts (SPEC 0.6). Only M exists so far.
+  // Keyboard shortcuts (SPEC 0.6). M and 1-9 so far.
   useEffect(function () {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.repeat) {
@@ -26,6 +35,9 @@ export default function App() {
       if (event.key === 'm' || event.key === 'M') {
         const metronomeOn = getProject().settings.metronomeOn
         updateSettings({ metronomeOn: !metronomeOn })
+      }
+      if (/^[1-9]$/.test(event.key)) {
+        toggleLayerMutedByIndex(Number(event.key) - 1)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -39,7 +51,7 @@ export default function App() {
       <div>
         <h1>Sounds</h1>
         <button onClick={handleStartClick}>Start</button>
-        <p>Not started.</p>
+        <p>{startStatus}</p>
       </div>
     )
   }
@@ -56,6 +68,8 @@ export default function App() {
         </button>
       </p>
       <BeatDisplay />
+      <LayerList />
+      <SampleButtons />
       <SetupControls />
     </div>
   )

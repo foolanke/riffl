@@ -3,6 +3,7 @@
 // will work by copying this object, so every change replaces it with a
 // new copy instead of editing it in place.
 // Plain TypeScript, no React (SPEC 0.1 "Engine vs. UI").
+import type { DrumName } from '../audio/drums.ts'
 
 export type TimeSignature = '4/4' | '3/4' | '6/8'
 export type LoopBars = 1 | 2 | 4
@@ -18,8 +19,26 @@ export interface ProjectSettings {
   countInBars: CountInBars
 }
 
+// One recorded take (SPEC 1.6). Hits are 16th-note step numbers
+// counted from the start of the loop (0 = bar 1, beat 1).
+export interface Layer {
+  id: string
+  drum: DrumName
+  hits: number[]
+  muted: boolean
+}
+
 export interface Project {
   settings: ProjectSettings
+  layers: Layer[]
+}
+
+// 16th-note grid steps in one bar (SPEC 2.3). 6/8 = 6 eighths = 12 sixteenths.
+export function getStepsPerBar(timeSignature: TimeSignature): number {
+  if (timeSignature === '3/4' || timeSignature === '6/8') {
+    return 12
+  }
+  return 16
 }
 
 // Allowed values for the setup controls (SPEC 2.1, 2.2).
@@ -56,6 +75,7 @@ export function createDefaultProject(): Project {
       metronomeVolume: 0.8,
       countInBars: 1, // SPEC 1.3: 1-bar count-in
     },
+    layers: [],
   }
 }
 
@@ -81,9 +101,49 @@ export function updateSettings(changes: Partial<ProjectSettings>): void {
   // Keep tempo inside the allowed range no matter who calls this.
   newSettings.tempoBpm = Math.min(MAX_TEMPO_BPM, Math.max(MIN_TEMPO_BPM, newSettings.tempoBpm))
 
-  currentProject = { ...currentProject, settings: newSettings }
+  setProject({ ...currentProject, settings: newSettings })
+}
 
+// Every change goes through here: replace the object, then tell listeners.
+function setProject(newProject: Project): void {
+  currentProject = newProject
   for (const listener of listeners) {
     listener()
+  }
+}
+
+// ---- Layers ----
+
+export function addLayers(newLayers: Layer[]): void {
+  setProject({ ...currentProject, layers: [...currentProject.layers, ...newLayers] })
+}
+
+export function deleteLayer(layerId: string): void {
+  const remaining: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id !== layerId) {
+      remaining.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: remaining })
+}
+
+export function toggleLayerMuted(layerId: string): void {
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId) {
+      updated.push({ ...layer, muted: !layer.muted })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
+// For keys 1-9 (SPEC 0.6). Index 0 = layer 1. Does nothing if no such layer.
+export function toggleLayerMutedByIndex(index: number): void {
+  const layer = currentProject.layers[index]
+  if (layer) {
+    toggleLayerMuted(layer.id)
   }
 }

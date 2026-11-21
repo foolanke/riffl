@@ -11,7 +11,7 @@
 //   [ count-in bars ][ loop bars ] <- loops back to the start of "loop bars"
 // So the count-in plays once, then the loop repeats forever.
 import * as Tone from 'tone'
-import { getProject, subscribeToProject } from '../project/projectStore.ts'
+import { getProject, getStepsPerBar, subscribeToProject } from '../project/projectStore.ts'
 import type { ProjectSettings, TimeSignature } from '../project/projectStore.ts'
 
 export interface BeatInfo {
@@ -50,6 +50,7 @@ let meter: Meter = { clicksPerBar: 4, ticksPerClick: 192, quarterNotesPerBar: 4 
 // Count-in and loop length are fixed for the layout currently on the transport.
 let layoutCountInBars = 0
 let layoutLoopBars = 2
+let layoutStepsPerBar = 16
 let repeatEventId: number | null = null
 let lastSettings: ProjectSettings | null = null
 
@@ -107,6 +108,7 @@ function applyLoopLayout(settings: ProjectSettings, countInBars: number): void {
   meter = getMeter(settings.timeSignature)
   layoutCountInBars = countInBars
   layoutLoopBars = settings.loopBars
+  layoutStepsPerBar = getStepsPerBar(settings.timeSignature)
 
   transport.timeSignature = meter.quarterNotesPerBar
   const ticksPerBar = getTicksPerBar()
@@ -217,6 +219,25 @@ function handleClickTime(time: number): void {
   Tone.getDraw().schedule(function () {
     emitBeat(beatInfo)
   }, time)
+}
+
+// ---- The 16th-note grid, for layer playback ----
+
+export function getTicksPerStep(): number {
+  return Tone.getTransport().PPQ / 4
+}
+
+// Which 16th-note step of the loop lands at `time`, or null during count-in.
+export function getLoopStepAtTime(time: number): number | null {
+  const ticks = Tone.getTransport().getTicksAtTime(time)
+  const stepIndex = Math.round(ticks / getTicksPerStep())
+  const countInSteps = layoutCountInBars * layoutStepsPerBar
+  if (stepIndex < countInSteps) {
+    return null
+  }
+  // Modulo guards against the loop-restart tick being read as loop end.
+  const stepsInLoop = layoutLoopBars * layoutStepsPerBar
+  return (stepIndex - countInSteps) % stepsInLoop
 }
 
 // ---- For the screen ----
