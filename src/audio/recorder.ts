@@ -6,18 +6,21 @@
 // from the next loop onward (SPEC 1.3).
 import * as Tone from 'tone'
 import { addLayers } from '../project/projectStore.ts'
+import { buildRecording, waitUntilAudioTime } from './audioTiming.ts'
 import { playForTake } from './clock.ts'
 import type { TakeTiming } from './clock.ts'
 import type { DrumName } from './drums.ts'
 import { decibelsToAmplitude, findHitsInSamples } from './hitDetection.ts'
+import { getLagSeconds } from './lagCheck.ts'
 import { getHitThresholdDb, startCapture, startMic, stopCapture } from './mic.ts'
 import type { CapturedChunk } from './recorderWorklet.ts'
 import { snapHitsToSteps, wrapStep } from './snapping.ts'
 
 // Extra audio kept around the loop, so a hit played slightly early on
-// beat 1, or one arriving late through the mic, is not cut off.
+// beat 1 is not cut off. Hits arrive late by the measured lag, so the
+// recording also runs on past the loop end by that lag plus a margin.
 const PRE_ROLL_SECONDS = 0.15
-const POST_ROLL_SECONDS = 0.2
+const POST_ROLL_MARGIN_SECONDS = 0.2
 
 export type RecordStatus = 'idle' | 'countIn' | 'recording' | 'processing'
 
@@ -83,6 +86,9 @@ export async function recordTake(): Promise<void> {
     return
   }
   const drum = state.takeDrum
+  // Read once so the whole take uses the same value.
+  const lagSeconds = getLagSeconds()
+  const postRollSeconds = Math.max(0, lagSeconds) + POST_ROLL_MARGIN_SECONDS
   try {
     await startMic()
     setState({ status: 'countIn', errorText: '' })
@@ -94,11 +100,11 @@ export async function recordTake(): Promise<void> {
     setState({ status: 'recording' })
 
     const loopEndTime = timing.loopStartTime + timing.loopSeconds
-    await waitUntilAudioTime(loopEndTime + POST_ROLL_SECONDS)
+    await waitUntilAudioTime(loopEndTime + postRollSeconds)
     setState({ status: 'processing' })
 
     const chunks = stopCapture()
-    const report = processTake(chunks, timing, drum)
+    const report = processTake(chunks, timing, drum, lagSeconds, postRollSeconds)
     setState({ status: 'idle', lastTake: report })
   } catch (error) {
     console.error(error)
@@ -107,19 +113,29 @@ export async function recordTake(): Promise<void> {
   }
 }
 
-function processTake(chunks: CapturedChunk[], timing: TakeTiming, drum: DrumName): TakeReport {
+function processTake(
+  chunks: CapturedChunk[],
+  timing: TakeTiming,
+  drum: DrumName,
+  lagSeconds: number,
+  postRollSeconds: number,
+): TakeReport {
   const sampleRate = Tone.getContext().sampleRate
 
   // Cut out the loop plus the pre/post roll, by exact frame number.
   const windowStartFrame = Math.round((timing.loopStartTime - PRE_ROLL_SECONDS) * sampleRate)
   const windowFrameCount = Math.round(
-    (PRE_ROLL_SECONDS + timing.loopSeconds + POST_ROLL_SECONDS) * sampleRate,
+    (PRE_ROLL_SECONDS + timing.loopSeconds + postRollSeconds) * sampleRate,
   )
-  const windowSamples = extractSamples(chunks, windowStartFrame, windowFrameCount)
+  const windowSamples = buildRecording(chunks, windowStartFrame, windowFrameCount)
 
   const loopStartIndex = Math.round(timing.loopStartTime * sampleRate) - windowStartFrame
   const loopFrameCount = Math.round(timing.loopSeconds * sampleRate)
-  lastTakeAudio = windowSamples.slice(loopStartIndex, loopStartIndex + loopFrameCount)
+  // The raw take for playback is the loop as it arrived at the mic, so it
+  // is shifted by the lag to line up with what was actually played.
+  const lagFrames = Math.round(lagSeconds * sampleRate)
+  const takeStart = Math.max(0, loopStartIndex + lagFrames)
+  lastTakeAudio = windowSamples.slice(takeStart, takeStart + loopFrameCount)
 
   // Find hits (step 13).
   const threshold = decibelsToAmplitude(getHitThresholdDb())
@@ -132,8 +148,8 @@ function processTake(chunks: CapturedChunk[], timing: TakeTiming, drum: DrumName
   const keptHitTimes: number[] = []
   const hitReports: HitReport[] = []
   for (const hitIndex of hitIndices) {
-    // Lag compensation (step 15) will be subtracted here.
-    const hitTime = (hitIndex - loopStartIndex) / sampleRate
+    // Subtract the measured lag (step 15) so the hit sits where it was played.
+    const hitTime = (hitIndex - loopStartIndex) / sampleRate - lagSeconds
     if (hitTime < -halfStep || hitTime >= timing.loopSeconds - halfStep) {
       continue
     }
@@ -163,20 +179,6 @@ function processTake(chunks: CapturedChunk[], timing: TakeTiming, drum: DrumName
   }
 }
 
-// Builds one continuous recording from the worklet's chunks.
-function extractSamples(chunks: CapturedChunk[], startFrame: number, frameCount: number): Float32Array {
-  const output = new Float32Array(frameCount)
-  for (const chunk of chunks) {
-    for (let i = 0; i < chunk.samples.length; i++) {
-      const outputIndex = chunk.startFrame + i - startFrame
-      if (outputIndex >= 0 && outputIndex < frameCount) {
-        output[outputIndex] = chunk.samples[i]
-      }
-    }
-  }
-  return output
-}
-
 // "bar.beat.sixteenth", all 1-based. Beats are quarter notes (4 steps).
 function getPositionLabel(step: number, stepsPerBar: number): string {
   const bar = Math.floor(step / stepsPerBar) + 1
@@ -184,19 +186,6 @@ function getPositionLabel(step: number, stepsPerBar: number): string {
   const beat = Math.floor(stepInBar / 4) + 1
   const sixteenth = (stepInBar % 4) + 1
   return bar + '.' + beat + '.' + sixteenth
-}
-
-function waitUntilAudioTime(audioTime: number): Promise<void> {
-  return new Promise(function (resolve) {
-    function check() {
-      if (Tone.getContext().currentTime >= audioTime) {
-        resolve()
-      } else {
-        setTimeout(check, 20)
-      }
-    }
-    check()
-  })
 }
 
 // ---- Playback of the raw take (step 12 test) ----

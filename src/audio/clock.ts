@@ -245,16 +245,23 @@ function handleClickTime(time: number): void {
   // Count-in always clicks, even with the metronome off; otherwise
   // there would be nothing to count in with.
   const shouldClick = beatInfo.isCountIn || settings.metronomeOn
-  if (shouldClick && clickSynth) {
-    const isAccent = beatInfo.beat === 1
-    const note = isAccent ? 'C6' : 'G5'
-    const velocity = isAccent ? 1 : 0.6
-    clickSynth.triggerAttackRelease(note, 0.03, time, velocity)
+  if (shouldClick) {
+    playClick(time, beatInfo.beat === 1)
   }
 
   Tone.getDraw().schedule(function () {
     emitBeat(beatInfo)
   }, time)
+}
+
+// One metronome click at an exact audio-clock time. Also used by the lag check.
+export function playClick(time: number, isAccent: boolean): void {
+  if (!clickSynth) {
+    return
+  }
+  const note = isAccent ? 'C6' : 'G5'
+  const velocity = isAccent ? 1 : 0.6
+  clickSynth.triggerAttackRelease(note, 0.03, time, velocity)
 }
 
 // ---- The 16th-note grid, for layer playback ----
