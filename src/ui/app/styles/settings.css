@@ -14,9 +14,43 @@
   align-items: center;
   justify-content: center;
   background: var(--color-overlay);
+  animation: settings-fade-in 120ms ease-out both;
+}
+
+/* Open: fade in while the panel slides up 12px into place. Close
+   (.is-closing, kept mounted by usePresence for 120ms): the reverse, the
+   panel drifting back down as it fades. */
+.settings-backdrop.is-closing {
+  animation: settings-fade-out 120ms ease-in both;
+  pointer-events: none;
+}
+
+@keyframes settings-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes settings-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes settings-panel-in {
+  from {
+    transform: translateY(12px);
+  }
+}
+
+@keyframes settings-panel-out {
+  to {
+    transform: translateY(12px);
+  }
 }
 
 .settings-panel {
+  animation: settings-panel-in 120ms ease-out both;
   width: 75%;
   height: 75%;
   display: flex;
@@ -27,6 +61,10 @@
   border-radius: var(--radius);
   background: var(--color-bg);
   overflow: hidden;
+}
+
+.settings-backdrop.is-closing .settings-panel {
+  animation: settings-panel-out 120ms ease-in both;
 }
 
 /* SETTINGS title + CLOSE, like the layers panel header (4.1). */
@@ -79,7 +117,7 @@
 }
 
 /* Disabled while a take runs (design.md 8: disabled text in --color-line). */
-.bpm-chip.is-disabled select {
+.bpm-chip.is-disabled .dropdown-trigger {
   color: var(--color-line);
   cursor: default;
 }

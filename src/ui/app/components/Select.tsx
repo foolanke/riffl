@@ -1,32 +1,28 @@
 // Select (design.md 5.8): full-width, 40 tall, 1px grey border, value in
-// Item text and a chevron on the right. Pass <option>/<optgroup> children.
-import type { ReactNode } from 'react'
-import { ICONS } from '../icons.ts'
+// Item text and a chevron on the right, with an animated option list
+// (Dropdown). Options can be split into labelled groups.
+import { Dropdown } from './Dropdown.tsx'
+import type { DropdownGroup } from './Dropdown.tsx'
+
+export type SelectGroup = DropdownGroup
 
 interface SelectProps {
   label: string // read by screen readers
   value: string
+  groups: SelectGroup[]
   disabled?: boolean
   onChange: (value: string) => void
-  children: ReactNode
 }
 
 export function Select(props: SelectProps) {
   return (
-    <div className={'select' + (props.disabled ? ' is-disabled' : '')}>
-      <select
-        className="text-item"
-        aria-label={props.label}
-        value={props.value}
-        disabled={props.disabled}
-        onChange={(event) => {
-          props.onChange(event.target.value)
-          event.target.blur() // so Space records instead of opening the list
-        }}
-      >
-        {props.children}
-      </select>
-      <img src={ICONS.chevronDown} alt="" />
-    </div>
+    <Dropdown
+      variant="select"
+      label={props.label}
+      value={props.value}
+      groups={props.groups}
+      disabled={props.disabled}
+      onChange={props.onChange}
+    />
   )
 }

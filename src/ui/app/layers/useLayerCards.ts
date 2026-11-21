@@ -31,7 +31,8 @@ export interface LayerCards {
   activeItem: LayerItem | null
   cardOrder: LayerItem[] // the sidebar's order: the active card first (design.md 4.2)
   recordingKey: string | null // the card whose take is in progress
-  activate: (item: LayerItem) => void
+  isExpanded: (item: LayerItem) => boolean // only the active card can be open
+  activate: (item: LayerItem) => void // another card: make it active and open; the active one: open/close it
   addLayer: () => void
   record: (item: LayerItem) => Promise<void>
   changeSound: (item: LayerItem, sound: LayerSound) => void
@@ -46,6 +47,8 @@ export function useLayerCards(): LayerCards {
   const project = useProject()
   const [drafts, setDrafts] = useState<DraftLayer[]>([])
   const [activeKey, setActiveKey] = useState<string | null>(null)
+  // The active card is open unless its header was clicked to close it.
+  const [activeCollapsed, setActiveCollapsed] = useState(false)
   const [recordingKey, setRecordingKey] = useState<string | null>(null)
   // Draft card key -> the object its take will be played on (step 24).
   // Recorded drum layers keep theirs in the project (layer.objectId).
@@ -68,6 +71,19 @@ export function useLayerCards(): LayerCards {
     }
   }
 
+  function isExpanded(item: LayerItem): boolean {
+    return activeItem !== null && item.key === activeItem.key && !activeCollapsed
+  }
+
+  function activate(item: LayerItem) {
+    if (activeItem !== null && item.key === activeItem.key) {
+      setActiveCollapsed(!activeCollapsed)
+      return
+    }
+    setActiveKey(item.key)
+    setActiveCollapsed(false)
+  }
+
   function getLinkedObjectId(item: LayerItem): string | null {
     return findLinkedObjectId(item, draftObjects)
   }
@@ -84,6 +100,7 @@ export function useLayerCards(): LayerCards {
     const draft: DraftLayer = { key: crypto.randomUUID(), sound: sound }
     setDrafts([...drafts, draft])
     setActiveKey(draft.key)
+    setActiveCollapsed(false)
   }
 
   async function record(item: LayerItem) {
@@ -91,6 +108,7 @@ export function useLayerCards(): LayerCards {
       return
     }
     setActiveKey(item.key)
+    setActiveCollapsed(false) // show the card whose take is running
     setRecordingKey(item.key)
 
     if (item.layer) {
@@ -234,7 +252,8 @@ export function useLayerCards(): LayerCards {
     activeItem: activeItem,
     cardOrder: cardOrder,
     recordingKey: recordingKey,
-    activate: (item) => setActiveKey(item.key),
+    isExpanded: isExpanded,
+    activate: activate,
     addLayer: addLayer,
     record: record,
     changeSound: changeSound,

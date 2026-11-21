@@ -73,3 +73,13 @@
   padding: 0 8px;
   color: var(--color-fg);
 }
+
+/* Anyone who asks the system for less motion gets instant changes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

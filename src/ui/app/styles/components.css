@@ -228,7 +228,7 @@
   background: var(--color-line);
 }
 
-/* BPM chip: a native select styled as the design's chip. */
+/* BPM chip: a dropdown (Dropdown.tsx) styled as the design's chip. */
 .bpm-chip {
   position: relative;
   flex-shrink: 0;
@@ -237,9 +237,10 @@
   overflow: hidden;
 }
 
-.bpm-chip select {
-  appearance: none;
-  display: block;
+.bpm-chip .dropdown-trigger {
+  display: grid;
+  justify-items: start;
+  text-align: left;
   padding: 4px 24px 4px 8px; /* 4 right padding + 16 chevron + 4 gap */
   border: none;
   background: transparent;
@@ -253,20 +254,8 @@
   width: 16px;
   height: 16px;
   transform: translateY(-50%);
+  transition: transform 150ms ease-out;
   pointer-events: none;
-}
-
-/* The open option list is drawn by the browser; keep it dark. */
-.bpm-chip option,
-.select option {
-  background: var(--color-bg);
-  color: var(--color-fg);
-}
-
-/* DRUMS / MELODY group headings in the sound picker. */
-.select optgroup {
-  background: var(--color-bg);
-  color: var(--color-fg-muted);
 }
 
 /* ---- 5.8 Select ---- */
@@ -283,9 +272,10 @@
   border-color: var(--color-fg-muted);
 }
 
-.select select {
-  appearance: none;
-  display: block;
+.select .dropdown-trigger {
+  display: grid;
+  justify-items: start;
+  text-align: left;
   width: 100%;
   min-height: 38px;
   padding: 8px 36px 8px 16px; /* 12 right padding + 16 chevron + 8 gap */
@@ -295,7 +285,7 @@
   cursor: pointer;
 }
 
-.select.is-disabled select {
+.select.is-disabled .dropdown-trigger {
   cursor: default;
 }
 
@@ -306,7 +296,90 @@
   width: 16px;
   height: 16px;
   transform: translateY(-50%);
+  transition: transform 150ms ease-out;
   pointer-events: none;
+}
+
+/* ---- Dropdown list (Dropdown.tsx; not in the design, built from its tokens) ---- */
+
+/* Trigger: the chosen value, with every option stacked invisibly in the same
+   grid cell so it is as wide as the widest option, like a native select. */
+.dropdown-value,
+.dropdown-sizer {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+}
+
+.dropdown-sizer {
+  visibility: hidden;
+  height: 0;
+}
+
+/* The chevron turns while the list is open. */
+.select.is-open img,
+.bpm-chip.is-open img {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* The list: black panel with the select's border and radius. It fades in
+   while sliding 4px away from the trigger, and on close (.is-closing, kept
+   mounted by usePresence for 120ms) fades out sliding back. */
+.dropdown-menu {
+  position: fixed;
+  z-index: 30;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  --dropdown-shift: -4px; /* below the trigger: comes down from it */
+  animation: dropdown-in 120ms ease-out both;
+}
+
+.dropdown-menu.is-above {
+  --dropdown-shift: 4px; /* above the trigger: comes up from it */
+}
+
+.dropdown-menu.is-closing {
+  animation: dropdown-out 120ms ease-in both;
+  pointer-events: none;
+}
+
+@keyframes dropdown-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--dropdown-shift));
+  }
+}
+
+@keyframes dropdown-out {
+  to {
+    opacity: 0;
+    transform: translateY(var(--dropdown-shift));
+  }
+}
+
+/* DRUMS / MELODY headings. */
+.dropdown-group-label {
+  padding: 8px 12px 4px;
+  color: var(--color-line);
+}
+
+.dropdown-option {
+  padding: 6px 12px;
+  border-radius: var(--radius-small);
+  color: var(--color-fg-muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dropdown-option.is-selected {
+  color: var(--color-fg);
+}
+
+.dropdown-option.is-highlighted {
+  background: var(--color-surface);
+  color: var(--color-fg);
 }
 
 /* ---- 5.9 Layer card ---- */

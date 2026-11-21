@@ -37,9 +37,7 @@ export function BrandBadge(props: BrandBadgeProps) {
           <img src={ICONS.logoMark} alt="" />
         </div>
       </div>
-      {settingsOpen ? (
-        <SettingsOverlay showMic={props.audioStarted} onClose={() => setSettingsOpen(false)} />
-      ) : null}
+      <SettingsOverlay open={settingsOpen} showMic={props.audioStarted} onClose={() => setSettingsOpen(false)} />
     </>
   )
 }
