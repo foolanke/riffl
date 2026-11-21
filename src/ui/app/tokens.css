@@ -54,6 +54,17 @@ body,
   margin: 0;
 }
 
+/* Whole-page scale (set by main.tsx): 1 at 1920 x 1080 and up, smaller on
+   smaller screens, so everything shrinks in proportion. Chrome's zoom also
+   scales vw/vh inside, so dividing by the scale keeps the page at exactly
+   the window size. */
+#root {
+  zoom: var(--ui-scale, 1);
+  width: calc(100vw / var(--ui-scale, 1));
+  height: calc(100vh / var(--ui-scale, 1));
+  overflow: hidden;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-fg);

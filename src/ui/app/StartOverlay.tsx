@@ -4,11 +4,13 @@
 import { useState } from 'react'
 import { startAudio } from '../../audio/audioEngine.ts'
 import { startCamera } from '../../vision/camera.ts'
+import { startHandTracking } from '../../vision/handTracking.ts'
 import { BrandBadge } from './BrandBadge.tsx'
 
 interface StartOverlayProps {
   // cameraOk = false if the camera couldn't be opened (the app still works, mic only).
-  onStarted: (cameraOk: boolean) => void
+  // trackingOk = false if hand tracking couldn't load (no melody, drums still work).
+  onStarted: (cameraOk: boolean, trackingOk: boolean) => void
 }
 
 export function StartOverlay(props: StartOverlayProps) {
@@ -28,15 +30,26 @@ export function StartOverlay(props: StartOverlayProps) {
     }
 
     setStatus('Opening camera...')
-    let cameraOk = true
+    let video: HTMLVideoElement | null = null
     try {
-      await startCamera()
+      video = await startCamera()
     } catch (error) {
       // Not fatal: drum takes work with the mic alone.
       console.error(error)
-      cameraOk = false
     }
-    props.onStarted(cameraOk)
+
+    let trackingOk = false
+    if (video) {
+      setStatus('Loading hand tracking...')
+      try {
+        await startHandTracking(video)
+        trackingOk = true
+      } catch (error) {
+        // Not fatal: drums still work, only melody needs hands.
+        console.error(error)
+      }
+    }
+    props.onStarted(video !== null, trackingOk)
   }
 
   return (
