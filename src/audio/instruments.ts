@@ -28,8 +28,6 @@ export function getInstrumentLabel(name: InstrumentName): string {
 }
 
 // White keys only (SPEC 3.3). A pitch is a letter plus octave, e.g. "G4".
-export const WHITE_KEY_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
-
 // True for names like "C4" or "B6". Used to check loaded files.
 export function isWhiteKeyPitch(value: unknown): value is string {
   return typeof value === 'string' && /^[A-G][0-9]$/.test(value)
