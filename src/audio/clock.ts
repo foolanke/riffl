@@ -138,6 +138,42 @@ export function play(): void {
   setPlaying(true)
 }
 
+// Exact timing of a take, in audio-clock seconds.
+export interface TakeTiming {
+  loopStartTime: number
+  loopSeconds: number
+  stepSeconds: number
+  stepsInLoop: number
+  stepsPerBar: number
+}
+
+// For recording (SPEC 1.3): always starts from the very beginning, so the
+// count-in plays, then the loop. Returns when the loop will start.
+// Assumes the tempo does not change during the take.
+export function playForTake(): TakeTiming {
+  const transport = Tone.getTransport()
+  transport.stop()
+  Tone.getDraw().cancel()
+
+  const settings = getProject().settings
+  applyLoopLayout(settings, settings.countInBars)
+
+  // Start slightly in the future so the start time is known exactly.
+  const startTime = Tone.now() + 0.05
+  transport.start(startTime)
+  setPlaying(true)
+
+  const secondsPerTick = 60 / (settings.tempoBpm * transport.PPQ)
+  const ticksPerBar = getTicksPerBar()
+  return {
+    loopStartTime: startTime + layoutCountInBars * ticksPerBar * secondsPerTick,
+    loopSeconds: layoutLoopBars * ticksPerBar * secondsPerTick,
+    stepSeconds: getTicksPerStep() * secondsPerTick,
+    stepsInLoop: layoutLoopBars * layoutStepsPerBar,
+    stepsPerBar: layoutStepsPerBar,
+  }
+}
+
 export function stop(): void {
   if (!isPlaying) {
     return
