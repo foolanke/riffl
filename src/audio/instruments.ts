@@ -1,9 +1,10 @@
-// The 6 melody instruments (SPEC 3.5), plus a pitched 808 for hip-hop/trap
-// (an extra the team asked for), and the white-key note helpers (SPEC 3.3).
+// The 6 melody instruments (SPEC 3.5), plus extras the team asked for
+// (not in SPEC): a pitched 808 for hip-hop/trap, and a flute and low flute
+// for Mask Off (Future). Also the white-key note helpers (SPEC 3.3).
 // No Tone.js here, so project data can use these types too (like drums.ts).
 // The sounds themselves are in melodySynths.ts.
 
-export type InstrumentName = 'pluck' | 'pad' | 'synthLead' | 'piano' | 'bass' | 'chordPad' | 'bass808'
+export type InstrumentName = 'pluck' | 'pad' | 'synthLead' | 'piano' | 'bass' | 'chordPad' | 'bass808' | 'flute' | 'lowFlute'
 
 export interface InstrumentInfo {
   name: InstrumentName
@@ -18,6 +19,8 @@ export const INSTRUMENTS: InstrumentInfo[] = [
   { name: 'bass', label: 'Bass' },
   { name: 'chordPad', label: 'Chord pad' },
   { name: 'bass808', label: '808' },
+  { name: 'flute', label: 'Flute' },
+  { name: 'lowFlute', label: 'Low flute' },
 ]
 
 export function getInstrumentLabel(name: InstrumentName): string {
@@ -55,6 +58,7 @@ export function moveByWhiteKeys(pitch: string, whiteKeySteps: number): string {
 //   produced synth chords) instead of squashed into one octave:
 //   root an octave down, root, 5th, and the 3rd an octave up.
 //   Still only the triad's three notes (SPEC 3.5), just spread out.
+// - Low flute: the note one octave below (alto-flute range).
 // - Everything else: the note itself.
 export function getNotesToPlay(instrument: InstrumentName, pitch: string): string[] {
   if (instrument === 'bass' || instrument === 'bass808') {
@@ -62,6 +66,9 @@ export function getNotesToPlay(instrument: InstrumentName, pitch: string): strin
   }
   if (instrument === 'chordPad') {
     return [moveByWhiteKeys(pitch, -7), pitch, moveByWhiteKeys(pitch, 4), moveByWhiteKeys(pitch, 9)]
+  }
+  if (instrument === 'lowFlute') {
+    return [moveByWhiteKeys(pitch, -7)]
   }
   return [pitch]
 }
