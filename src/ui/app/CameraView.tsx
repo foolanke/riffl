@@ -1,0 +1,50 @@
+// Camera panel (design.md 3.1, 3.2): the live mirrored webcam with the HUD
+// strip on top, and the hint pill at the bottom.
+// The engine owns the <video> (vision/camera.ts); this just shows it.
+import { useEffect, useRef } from 'react'
+import { getCameraVideo } from '../../vision/camera.ts'
+
+interface CameraViewProps {
+  hudLabel: string // "SETUP / CAMERA" or "LAYER 01 / SNARE"
+  hintText: string | null // null = no hint pill
+  cameraOk: boolean
+}
+
+export function CameraView(props: CameraViewProps) {
+  const videoHolderRef = useRef<HTMLDivElement>(null)
+
+  useEffect(function () {
+    const holder = videoHolderRef.current
+    const video = getCameraVideo()
+    if (holder && video && video.parentElement !== holder) {
+      // Clear any inline sizing so the stylesheet controls it (cover, mirrored holder).
+      video.removeAttribute('style')
+      holder.appendChild(video)
+    }
+  }, [])
+
+  return (
+    <div className="camera">
+      <div className="camera-video" ref={videoHolderRef} />
+      {props.cameraOk ? null : (
+        <div className="camera-message">
+          <span className="text-label color-muted">Camera unavailable. Drum takes still work with the mic.</span>
+        </div>
+      )}
+
+      <div className="hud-strip">
+        <div className="tick" />
+        <span className="hud-session text-label">Session 01</span>
+        <div className="tick" />
+        <span className="text-label">{props.hudLabel}</span>
+        <div className="tick" />
+      </div>
+
+      {props.hintText !== null ? (
+        <div className="hint-pill">
+          <span className="text-label color-muted">{props.hintText}</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}

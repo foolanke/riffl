@@ -1,0 +1,73 @@
+// The bottom Layers panel (design.md 4.1): LAYERS title + ADD LAYER, then
+// the empty-state text, or one track row per recorded layer.
+//
+// Track rows are provisional until the State 1 build: one dot per 16th step
+// of the loop, filled where the layer plays (design.md 10, Q3 is still open).
+// Newest layer first, as in the design.
+import { useProject } from '../hooks.ts'
+import { ICONS } from './icons.ts'
+import { getStepMap, getStepsInLoop } from './layerItems.ts'
+import type { LayerItem } from './layerItems.ts'
+
+interface LayersPanelProps {
+  items: LayerItem[]
+  onAddLayer: () => void
+}
+
+export function LayersPanel(props: LayersPanelProps) {
+  const settings = useProject().settings
+  const stepsInLoop = getStepsInLoop(settings)
+
+  const recordedNewestFirst: LayerItem[] = []
+  for (let i = props.items.length - 1; i >= 0; i--) {
+    if (props.items[i].layer !== null) {
+      recordedNewestFirst.push(props.items[i])
+    }
+  }
+
+  return (
+    <div className="layers-panel">
+      <div className="layers-header">
+        <span className="text-title">Layers</span>
+        <div className="layers-header-spacer" />
+        <button
+          className="button-outline text-item"
+          type="button"
+          onClick={(event) => {
+            props.onAddLayer()
+            event.currentTarget.blur() // so Space records instead of adding another layer
+          }}
+        >
+          <img src={ICONS.plus} alt="" />
+          Add layer
+        </button>
+      </div>
+
+      {recordedNewestFirst.length === 0 ? (
+        <div className="layers-empty">
+          <span className="text-label color-muted">No layers yet. Record one to start your loop.</span>
+        </div>
+      ) : (
+        <div className="tracks">
+          {recordedNewestFirst.map((item) => {
+            const stepMap = getStepMap(item.layer, stepsInLoop)
+            return (
+              <div key={item.key} className={'track-row' + (item.muted ? ' is-muted' : '')}>
+                <div className="track-label">
+                  <span className="text-label color-muted">Layer {item.number}</span>
+                  <span className="text-item">{item.soundLabel}</span>
+                </div>
+                <div className="tick" />
+                <div className="track-steps">
+                  {stepMap.map((isOn, step) => (
+                    <div key={step} className={'step' + (isOn ? ' is-on' : '')} />
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

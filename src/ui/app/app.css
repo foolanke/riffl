@@ -1,0 +1,693 @@
+/* Component styles for the designed page. Every value comes from
+   docs/design.md (section numbers in the comments). */
+
+/* ---- 3.1 Page frame ---- */
+
+.page {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
+.main {
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.sidebar {
+  flex-shrink: 0;
+  width: 321px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 32px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sidebar-spacer {
+  flex: 1 0 0;
+  min-height: 0;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* Small, discreet link to the old test page. */
+.test-page-link {
+  align-self: center;
+  color: var(--color-line);
+  text-decoration: none;
+}
+
+.test-page-link:hover {
+  color: var(--color-fg-muted);
+}
+
+/* ---- 5.2 Section ---- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.section-title {
+  padding: 0 8px;
+  color: var(--color-fg);
+}
+
+/* ---- 5.1 Brand badge ---- */
+
+.brand-badge {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  flex-shrink: 0;
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.brand-logo-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 16px;
+}
+
+.brand-logo-cell img {
+  display: block;
+  width: 51px;
+  height: 28.5px;
+}
+
+.brand-divider {
+  width: 1px;
+  flex-shrink: 0;
+  background: var(--color-fg);
+}
+
+.brand-wordmark-cell {
+  flex: 1 0 0;
+  min-width: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  background: var(--color-fg);
+  color: var(--color-bg);
+  font-family: var(--font-brand);
+  font-weight: 600;
+  font-size: 32px;
+  letter-spacing: 0.96px;
+  line-height: normal;
+  white-space: nowrap;
+}
+
+/* The collapsed sidebar isn't designed yet (design.md 10, Q10), so the toggle does nothing. */
+.brand-toggle-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  cursor: default;
+}
+
+.brand-toggle-cell img {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+/* ---- 5.3 Record button, 5.7 Download button (filled buttons) ---- */
+
+.button-filled {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.button-filled img {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.button-record {
+  background: var(--color-surface);
+  color: var(--color-fg);
+}
+
+.button-record:hover:not(:disabled) {
+  background: #555555;
+}
+
+.button-record:disabled {
+  cursor: default;
+}
+
+/* Recording: the red icon pulses (design.md section 8 default). */
+.button-record.is-recording img {
+  animation: record-pulse 0.94s ease-in-out infinite;
+}
+
+@keyframes record-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.button-download {
+  background: var(--color-fg);
+  color: var(--color-bg);
+}
+
+.button-download:disabled {
+  background: var(--color-surface);
+  color: var(--color-line);
+  cursor: default;
+}
+
+.button-filled:active:not(:disabled) {
+  opacity: 0.8;
+}
+
+/* ---- 5.5 Outline button (ADD LAYER) ---- */
+
+.button-outline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-fg);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.button-outline img {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.button-outline:hover {
+  border-color: var(--color-fg-muted);
+}
+
+.button-outline:active {
+  opacity: 0.8;
+}
+
+/* ---- 5.4 Metronome strip ---- */
+
+.metronome-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex-shrink: 0;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+/* Timer icon doubles as the metronome on/off switch (M key does the same). */
+.metronome-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.metronome-toggle img {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.metronome-strip.is-off .metronome-toggle img,
+.metronome-strip.is-off .metronome-name {
+  opacity: 0.4;
+}
+
+.metronome-rule {
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 1px;
+  background: var(--color-line);
+}
+
+/* BPM chip: a native select styled as the design's chip. */
+.bpm-chip {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.bpm-chip select {
+  appearance: none;
+  display: block;
+  padding: 4px 24px 4px 8px; /* 4 right padding + 16 chevron + 4 gap */
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.bpm-chip img {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* The open option list is drawn by the browser; keep it dark. */
+.bpm-chip option,
+.select option {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+/* ---- 5.8 Select ---- */
+
+.select {
+  position: relative;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+.select:hover:not(.is-disabled) {
+  border-color: var(--color-fg-muted);
+}
+
+.select select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 36px 8px 16px; /* 12 right padding + 16 chevron + 8 gap */
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+}
+
+.select.is-disabled select {
+  cursor: default;
+}
+
+.select img {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* ---- 5.9 Layer card ---- */
+
+.layer-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 8px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+.layer-card.is-muted {
+  opacity: 0.4;
+}
+
+.layer-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--color-fg);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.layer-card.is-collapsed:hover {
+  border-color: var(--color-fg-muted);
+}
+
+.layer-card-spacer {
+  flex: 1 0 0;
+  min-width: 1px;
+}
+
+.layer-card-header img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.layer-card-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px;
+  overflow: hidden;
+}
+
+/* Status or result of the last take, under the card controls. */
+.layer-card-message {
+  padding: 0 8px;
+  white-space: normal;
+}
+
+/* ---- 5.10 Audio bar ---- */
+
+.audio-bar {
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.audio-bar-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 56px;
+}
+
+/* One slot per 16th step: a white bar where the layer plays, a dot elsewhere. */
+.audio-bar-steps {
+  position: relative;
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+}
+
+.audio-bar-slot {
+  flex: 1 0 0;
+  min-width: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.audio-bar-hit {
+  width: 2px;
+  height: 44px;
+  border-radius: 1px;
+  background: var(--color-fg);
+}
+
+.audio-bar-dot {
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-line);
+}
+
+/* The "now" line; moved every frame from the audio clock. */
+.audio-bar-now {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 56px;
+  border-radius: 1px;
+  background: var(--color-record);
+}
+
+.audio-bar-time {
+  flex-shrink: 0;
+}
+
+/* ---- 3.1 Camera panel ---- */
+
+.camera {
+  position: relative;
+  flex: 1 0 0;
+  min-height: 1px;
+  width: 100%;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+/* Mirrored like a selfie camera (SPEC 3.2). Overlays are not mirrored. */
+.camera-video {
+  position: absolute;
+  inset: 0;
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+.camera-video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ---- 5.16 HUD strip ---- */
+
+.hud-strip {
+  position: absolute;
+  top: 15px;
+  left: 15px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-fg);
+  border-radius: var(--radius);
+  background: var(--color-overlay);
+}
+
+.hud-session {
+  opacity: 0.6;
+}
+
+.tick {
+  width: 1px;
+  height: 16px;
+  flex-shrink: 0;
+  background: var(--color-fg);
+}
+
+/* ---- Hint pill (4.1) ---- */
+
+.hint-pill {
+  position: absolute;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  background: var(--color-overlay);
+  overflow: hidden;
+}
+
+/* ---- Layers panel (3.1, 4.1) ---- */
+
+.layers-panel {
+  flex-shrink: 0;
+  height: 290px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.layers-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.layers-header-spacer {
+  flex: 1 0 0;
+  min-width: 1px;
+}
+
+.layers-empty {
+  flex: 1 0 0;
+  min-height: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* More layers than fit: scroll (design.md 10, Q6 is still open). */
+.tracks {
+  flex: 1 0 0;
+  min-height: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+/* ---- 5.12 Track row (percussion, step dots) ---- */
+
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+.track-row.is-muted {
+  opacity: 0.4;
+}
+
+.track-label {
+  width: 140px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.track-steps {
+  flex: 1 0 0;
+  min-width: 1px;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  overflow: hidden;
+}
+
+/* 5.13 Step, Dot shape: drawn in CSS so it stays round in any cell width. */
+.step {
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step::after {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-line);
+}
+
+.step.is-on::after {
+  border: none;
+  background: var(--color-fg-muted);
+}
+
+/* ---- Start overlay ---- */
+
+.start-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: var(--color-bg);
+}
+
+.start-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  width: 289px;
+}
+
+.start-overlay-status {
+  text-align: center;
+  white-space: normal;
+}
+
+/* Camera unavailable message, shown in place of the video. */
+.camera-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -1,0 +1,266 @@
+// The designed riffl page (docs/design.md, Figma states 0-1).
+// Layout: camera + layers panel on the left, sidebar on the right.
+//
+// Layers: ADD LAYER makes a draft card (01, 02 ...) with a drum picker.
+// RECORD on a draft records a new take with that drum (the same take flow
+// as the test page, SPEC 1.3); the finished take replaces the draft.
+// RECORD on a recorded layer retakes it (SPEC 1.6).
+//
+// The old step-by-step test page stays at /test.html, unchanged.
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { DrumName } from '../../audio/drums.ts'
+import { getRecorderState, recordTake, setTakeDrum, setTakeKind, subscribeToRecorder } from '../../audio/recorder.ts'
+import {
+  getProject,
+  setLayerDrum,
+  toggleLayerMutedByIndex,
+  undoLastTake,
+  updateSettings,
+} from '../../project/projectStore.ts'
+import { downloadProjectFile } from '../../project/saveLoad.ts'
+import { useProject } from '../hooks.ts'
+import { BrandBadge } from './BrandBadge.tsx'
+import { CameraView } from './CameraView.tsx'
+import { ICONS } from './icons.ts'
+import { LayerCard } from './LayerCard.tsx'
+import { LayersPanel } from './LayersPanel.tsx'
+import { buildLayerItems, findItem } from './layerItems.ts'
+import type { DraftLayer, LayerItem } from './layerItems.ts'
+import { MetronomeStrip } from './MetronomeStrip.tsx'
+import { StartOverlay } from './StartOverlay.tsx'
+
+const SETUP_HINT = 'Point the camera at an object, then press record'
+
+export function RifflApp() {
+  const [started, setStarted] = useState(false)
+  const [cameraOk, setCameraOk] = useState(true)
+  const [drafts, setDrafts] = useState<DraftLayer[]>([])
+  const [activeKey, setActiveKey] = useState<string | null>(null)
+  const [recordingKey, setRecordingKey] = useState<string | null>(null)
+  const project = useProject()
+  const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
+
+  const items = buildLayerItems(project.layers, drafts)
+  // If the active layer is gone (deleted, undone), fall back to the newest one.
+  let activeItem = findItem(items, activeKey)
+  if (activeItem === null && items.length > 0) {
+    activeItem = items[items.length - 1]
+  }
+
+  function handleAddLayer() {
+    // A new layer starts on the drum picked last, or kick.
+    let drum: DrumName = 'kick'
+    if (activeItem && activeItem.draft) {
+      drum = activeItem.draft.drum
+    } else if (activeItem && activeItem.layer && activeItem.layer.type === 'drum') {
+      drum = activeItem.layer.drum
+    }
+    const draft: DraftLayer = { key: crypto.randomUUID(), drum: drum }
+    setDrafts([...drafts, draft])
+    setActiveKey(draft.key)
+  }
+
+  async function handleRecord(item: LayerItem) {
+    if (getRecorderState().status !== 'idle') {
+      return
+    }
+    setActiveKey(item.key)
+    setRecordingKey(item.key)
+
+    if (item.layer) {
+      await recordTake(item.layer.id) // retake (drum or melody)
+      setRecordingKey(null)
+      return
+    }
+    if (!item.draft) {
+      setRecordingKey(null)
+      return
+    }
+
+    // New drum take. Remember which layers existed, so the new one can be found.
+    const draftKey = item.draft.key
+    const idsBefore = new Set<string>()
+    for (const layer of getProject().layers) {
+      idsBefore.add(layer.id)
+    }
+    setTakeKind('drum')
+    setTakeDrum(item.draft.drum) // also clears any chosen object: mic-only for now
+    await recordTake()
+    setRecordingKey(null)
+
+    // The take found hits: the new layer replaces the draft. If it found
+    // none, no layer was made and the draft stays for another try.
+    for (const layer of getProject().layers) {
+      if (!idsBefore.has(layer.id)) {
+        setDrafts(function (current) {
+          return current.filter((draft) => draft.key !== draftKey)
+        })
+        setActiveKey(layer.id)
+        return
+      }
+    }
+  }
+
+  function handleDrumChange(item: LayerItem, drum: DrumName) {
+    if (item.draft) {
+      const draftKey = item.draft.key
+      setDrafts(
+        drafts.map(function (draft) {
+          return draft.key === draftKey ? { key: draftKey, drum: drum } : draft
+        }),
+      )
+    } else if (item.layer && item.layer.type === 'drum') {
+      setLayerDrum(item.layer.id, drum)
+    }
+  }
+
+  // Keyboard shortcuts (SPEC 0.6): Space records the active layer, Z undo,
+  // 1-9 mute, M metronome. The handler reads the latest values from a ref,
+  // so it is set up once.
+  const recordActiveRef = useRef<() => void>(() => {})
+  recordActiveRef.current = function () {
+    if (activeItem) {
+      handleRecord(activeItem)
+    }
+  }
+
+  useEffect(
+    function () {
+      if (!started) {
+        return
+      }
+      function handleKeyDown(event: KeyboardEvent) {
+        if (event.key === ' ') {
+          // Stop Space from scrolling or pressing whatever has focus.
+          event.preventDefault()
+          if (!event.repeat) {
+            recordActiveRef.current()
+          }
+          return
+        }
+        if (event.repeat) {
+          return
+        }
+        if (event.key === 'm' || event.key === 'M') {
+          updateSettings({ metronomeOn: !getProject().settings.metronomeOn })
+        }
+        if (/^[1-9]$/.test(event.key)) {
+          toggleLayerMutedByIndex(Number(event.key) - 1)
+        }
+        // Undo only between takes, never while one is being recorded.
+        if ((event.key === 'z' || event.key === 'Z') && getRecorderState().status === 'idle') {
+          undoLastTake()
+        }
+      }
+      // Buttons fire on Space key-up, so block that too.
+      function handleKeyUp(event: KeyboardEvent) {
+        if (event.key === ' ') {
+          event.preventDefault()
+        }
+      }
+      window.addEventListener('keydown', handleKeyDown)
+      window.addEventListener('keyup', handleKeyUp)
+      return function () {
+        window.removeEventListener('keydown', handleKeyDown)
+        window.removeEventListener('keyup', handleKeyUp)
+      }
+    },
+    [started],
+  )
+
+  if (!started) {
+    return (
+      <StartOverlay
+        onStarted={function (cameraWorks) {
+          setCameraOk(cameraWorks)
+          setStarted(true)
+        }}
+      />
+    )
+  }
+
+  const hudLabel = activeItem ? `Layer ${activeItem.number} / ${activeItem.soundLabel}` : 'Setup / Camera'
+  const hintText = getHintText(recorder.status, project.layers.length > 0)
+
+  // The active card comes first and is expanded (design.md 4.2).
+  const cardOrder: LayerItem[] = []
+  if (activeItem) {
+    cardOrder.push(activeItem)
+  }
+  for (const item of items) {
+    if (activeItem === null || item.key !== activeItem.key) {
+      cardOrder.push(item)
+    }
+  }
+
+  return (
+    <div className="page">
+      <div className="main">
+        <CameraView hudLabel={hudLabel} hintText={hintText} cameraOk={cameraOk} />
+        <LayersPanel items={items} onAddLayer={handleAddLayer} />
+      </div>
+
+      <aside className="sidebar">
+        <BrandBadge />
+        <MetronomeStrip />
+
+        {cardOrder.length > 0 ? (
+          <div className="section">
+            <div className="section-title text-label">Layers</div>
+            {cardOrder.map((item) => {
+              const isActive = activeItem !== null && item.key === activeItem.key
+              return (
+                <LayerCard
+                  key={item.key}
+                  item={item}
+                  expanded={isActive}
+                  recorderStatus={recorder.status}
+                  isRecordingThis={recordingKey === item.key}
+                  message={isActive ? recorder.message : ''}
+                  onActivate={() => setActiveKey(item.key)}
+                  onRecord={() => handleRecord(item)}
+                  onDrumChange={(drum) => handleDrumChange(item, drum)}
+                />
+              )
+            })}
+          </div>
+        ) : null}
+
+        <div className="sidebar-spacer" />
+
+        <div className="sidebar-footer">
+          <button
+            className="button-filled button-download text-item"
+            type="button"
+            disabled={project.layers.length === 0}
+            onClick={(event) => {
+              downloadProjectFile()
+              event.currentTarget.blur()
+            }}
+          >
+            <img src={project.layers.length === 0 ? ICONS.downloadDisabled : ICONS.download} alt="" />
+            Download
+          </button>
+          <a className="test-page-link text-label" href="/test.html">
+            Test page
+          </a>
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+// The hint pill at the bottom of the camera: take progress while recording,
+// otherwise the setup hint until the first layer exists.
+function getHintText(status: string, hasLayers: boolean): string | null {
+  if (status === 'countIn') {
+    return 'Count-in. Get ready.'
+  }
+  if (status === 'recording') {
+    return 'Recording. Play now.'
+  }
+  if (status === 'processing') {
+    return 'Finding hits...'
+  }
+  return hasLayers ? null : SETUP_HINT
+}
