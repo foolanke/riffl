@@ -1,4 +1,5 @@
-// The bottom Layers panel (design.md 4.1): LAYERS title + ADD LAYER, then
+// The bottom Layers panel (design.md 4.1): LAYERS title, bar/beat readout,
+// PLAY/STOP, UNDO and ADD LAYER, then
 // the empty-state text, or one track row per recorded layer.
 //
 // Drum rows: one dot per 16th step of the loop, filled where the layer plays
@@ -8,6 +9,7 @@ import { useProject } from '../hooks.ts'
 import { ICONS } from './icons.ts'
 import { ScoreStaff } from './ScoreTrack.tsx'
 import { getStepMap, getStepsInLoop } from './layerItems.ts'
+import { BeatReadout, TransportButtons } from './TransportControls.tsx'
 import type { LayerItem } from './layerItems.ts'
 
 interface LayersPanelProps {
@@ -30,7 +32,9 @@ export function LayersPanel(props: LayersPanelProps) {
     <div className="layers-panel">
       <div className="layers-header">
         <span className="text-title">Layers</span>
+        <BeatReadout />
         <div className="layers-header-spacer" />
+        <TransportButtons />
         <button
           className="button-outline text-item"
           type="button"
