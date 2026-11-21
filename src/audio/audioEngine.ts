@@ -2,11 +2,13 @@
 // Tone.js is installed from npm and bundled by Vite, so nothing loads
 // from the internet at runtime (SPEC 0.2).
 import * as Tone from 'tone'
+import { initClock } from './clock.ts'
 
 // Browsers keep audio locked until the user clicks something.
 // Tone.start() unlocks it, so it must be called from a click handler.
 export async function startAudio(): Promise<void> {
   await Tone.start()
+  initClock()
   console.log('Audio started, sample rate:', Tone.getContext().sampleRate)
 }
 
