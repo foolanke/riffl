@@ -9,11 +9,21 @@
 // note name on each fingertip for the column that hand is in.
 // Live notes (step 26, SPEC 3.4, 3.6): the playing notes shown large, the
 // pinched fingertip highlighted, and a pinch-distance readout for tuning.
+// Instruments (step 27, SPEC 3.5): picker, and the selected one on screen.
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { PointerEvent } from 'react'
 import { DRUMS, getDrumLabel } from '../audio/drums.ts'
 import type { DrumName } from '../audio/drums.ts'
-import { getHeldNote, getLastPinchDistances, setLiveMelodyOn } from '../audio/liveMelody.ts'
+import { INSTRUMENTS, getInstrumentLabel } from '../audio/instruments.ts'
+import type { InstrumentName } from '../audio/instruments.ts'
+import {
+  getHeldNote,
+  getLastPinchDistances,
+  getSelectedInstrument,
+  selectInstrument,
+  setLiveMelodyOn,
+  subscribeToInstrument,
+} from '../audio/liveMelody.ts'
 import { getRecorderState, selectObjectForTake, subscribeToRecorder } from '../audio/recorder.ts'
 import { addObject, deleteObject, getProject, setObjectDrum } from '../project/projectStore.ts'
 import type { Box } from '../project/projectStore.ts'
@@ -38,6 +48,7 @@ export function CameraPanel() {
   showMelodyGuideRef.current = showMelodyGuide
   const objects = useProject().objects
   const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
+  const instrument = useSyncExternalStore(subscribeToInstrument, getSelectedInstrument)
   const videoHolderRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fpsRef = useRef<HTMLSpanElement>(null)
@@ -199,6 +210,22 @@ export function CameraPanel() {
             }}
           />{' '}
           Melody: guide and live notes (pinch thumb to a finger to play)
+        </label>{' '}
+        <label>
+          Instrument:{' '}
+          <select
+            value={instrument}
+            onChange={(event) => {
+              selectInstrument(event.target.value as InstrumentName)
+              event.target.blur() // so Space records instead of opening the list
+            }}
+          >
+            {INSTRUMENTS.map((info) => (
+              <option key={info.name} value={info.name}>
+                {info.label}
+              </option>
+            ))}
+          </select>
         </label>
       </p>
       <p>
@@ -374,6 +401,18 @@ function drawMelodyGuide(context: CanvasRenderingContext2D, width: number, heigh
     context.font = 'bold 48px sans-serif'
     drawLabel(context, playing.join('  '), width / 2, 40, 'lime', 56)
   }
+
+  // The selected instrument (SPEC 3.9), top left.
+  context.font = 'bold 16px sans-serif'
+  context.textAlign = 'left'
+  const instrumentText = 'Instrument: ' + getInstrumentLabel(getSelectedInstrument())
+  const textWidth = context.measureText(instrumentText).width
+  context.fillStyle = 'rgba(0, 0, 0, 0.7)'
+  context.fillRect(6, 6, textWidth + 12, 24)
+  context.fillStyle = 'white'
+  context.textBaseline = 'middle'
+  context.fillText(instrumentText, 12, 18)
+  context.textBaseline = 'alphabetic'
   context.textAlign = 'left'
 }
 

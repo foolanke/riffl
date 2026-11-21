@@ -3,6 +3,9 @@
 // Runs once per camera frame (not per screen redraw), so React never
 // affects when a note sounds (SPEC 0.1).
 //
+// Instruments (step 27): the selected instrument decides the sound and
+// which notes a pinch plays (bass 2 octaves down, chord pad a triad).
+//
 // Not recorded yet: melody takes arrive in step 29.
 import * as Tone from 'tone'
 import { onHandFrame } from '../vision/handTracking.ts'
@@ -11,8 +14,9 @@ import { getGuideHands } from '../vision/melodyGuide.ts'
 import type { FingerName, GuideHand } from '../vision/melodyGuide.ts'
 import { getPinchDistances, resetPinch, updatePinch } from '../vision/pinch.ts'
 import type { PinchDistances } from '../vision/pinch.ts'
-import { createSynthLeadVoice } from './melodySynths.ts'
-import type { MelodyVoice } from './melodySynths.ts'
+import { getNotesToPlay } from './instruments.ts'
+import type { InstrumentName } from './instruments.ts'
+import { getMelodyVoice } from './melodySynths.ts'
 import { getRecorderState } from './recorder.ts'
 
 // Tracking sometimes loses a hand for a frame or two. A held note only
@@ -23,27 +27,56 @@ const SIDES: HandSide[] = ['left', 'right']
 
 // The note each hand is holding: which finger, and the pitch it started
 // on. The pitch stays fixed while held, even if the hand drifts into
-// another column, so a held note never jumps.
+// another column, so a held note never jumps. The instrument is kept so
+// note off goes to the voice that started it.
 export interface HeldNote {
   finger: FingerName
   pitch: string
+  instrument: InstrumentName
 }
 
 let initialized = false
 let melodyOn = true
-let voices: Record<HandSide, MelodyVoice> | null = null
+// Pluck by default: the first sound of I Gotta Feeling (SPEC 3.5).
+let selectedInstrument: InstrumentName = 'pluck'
+const instrumentListeners = new Set<() => void>()
 const held: Record<HandSide, HeldNote | null> = { left: null, right: null }
 const lastSeenTime: Record<HandSide, number> = { left: 0, right: 0 }
 const lastDistances: Record<HandSide, PinchDistances | null> = { left: null, right: null }
 
-// Call once, after startAudio().
+// Call once, after loadMelodyInstruments().
 export function initLiveMelody(): void {
   if (initialized) {
     return
   }
   initialized = true
-  voices = { left: createSynthLeadVoice(), right: createSynthLeadVoice() }
   onHandFrame(handleHandFrame)
+}
+
+// ---- Instrument picker (SPEC 3.5) ----
+
+export function getSelectedInstrument(): InstrumentName {
+  return selectedInstrument
+}
+
+// Held notes stop first, so nothing hangs on the old instrument.
+// The pinch itself carries on: the next pinch uses the new instrument.
+export function selectInstrument(instrument: InstrumentName): void {
+  for (const side of SIDES) {
+    stopNote(side)
+    resetPinch(side)
+  }
+  selectedInstrument = instrument
+  for (const listener of instrumentListeners) {
+    listener()
+  }
+}
+
+export function subscribeToInstrument(listener: () => void): () => void {
+  instrumentListeners.add(listener)
+  return function unsubscribe() {
+    instrumentListeners.delete(listener)
+  }
 }
 
 // The "melody" checkbox: off = no live notes (and any held note stops).
@@ -117,19 +150,28 @@ function getPitch(hand: GuideHand, finger: FingerName): string {
 // Tone.immediate() is "right now". Tone.now() would add Tone's ~0.1s
 // scheduling look-ahead, which is a lag you'd hear on every pinch.
 function startNote(side: HandSide, finger: FingerName, pitch: string): void {
-  if (!voices) {
+  const current = held[side]
+  if (current !== null && current.instrument !== selectedInstrument) {
+    stopNote(side)
+  }
+  const voice = getMelodyVoice(selectedInstrument, side)
+  if (!voice) {
     return
   }
-  // Same voice, new pitch: the attack simply moves to the new note.
-  voices[side].noteOn(pitch, Tone.immediate())
-  held[side] = { finger: finger, pitch: pitch }
+  // Same voice, new pitch: the voice releases the old notes itself.
+  voice.noteOn(getNotesToPlay(selectedInstrument, pitch), Tone.immediate())
+  held[side] = { finger: finger, pitch: pitch, instrument: selectedInstrument }
 }
 
 function stopNote(side: HandSide): void {
-  if (!voices || held[side] === null) {
+  const current = held[side]
+  if (current === null) {
     return
   }
-  voices[side].noteOff(Tone.immediate())
+  const voice = getMelodyVoice(current.instrument, side)
+  if (voice) {
+    voice.noteOff(Tone.immediate())
+  }
   held[side] = null
 }
 
