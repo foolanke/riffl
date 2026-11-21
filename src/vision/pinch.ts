@@ -6,7 +6,8 @@
 // - Separate press and release thresholds (hysteresis), so a note doesn't
 //   flicker on and off when the fingers hover at the edge.
 // - One pinch per hand. If several fingers are close, the closest wins.
-//   Once pinched, that finger stays the note until it is released.
+//   A held finger stays the note until it is released, or until another
+//   finger is pressed and clearly closer (fast runs).
 import type { FingerName } from './melodyGuide.ts'
 import type { HandPoint, HandSide } from './handTracking.ts'
 
@@ -14,7 +15,10 @@ import type { HandPoint, HandSide } from './handTracking.ts'
 // fingertips measure roughly 0.15-0.3; an open hand is around 1.
 // Tune these with the readout under the camera view.
 export const PINCH_PRESS_DISTANCE = 0.35
-export const PINCH_RELEASE_DISTANCE = 0.5
+export const PINCH_RELEASE_DISTANCE = 0.45
+// While one finger is held, another must be this much closer to take over,
+// so two fingers at about the same distance don't flip back and forth.
+const SWITCH_MARGIN = 0.08
 
 const WRIST = 0
 const MIDDLE_FINGER_BASE = 9
@@ -45,15 +49,28 @@ export function getPinchDistances(points: HandPoint[], aspect: number): PinchDis
 // Updates one hand's pinch from this frame's distances. Returns the
 // finger being pinched after this frame, or null.
 export function updatePinch(side: HandSide, distances: PinchDistances): FingerName | null {
+  const closest = findClosestPressedFinger(distances)
   const current = activeFinger[side]
-  if (current !== null) {
-    if (distances[current] <= PINCH_RELEASE_DISTANCE) {
-      return current // still held
+
+  if (current !== null && distances[current] <= PINCH_RELEASE_DISTANCE) {
+    // Quick runs (e.g. index -> middle -> ring): the thumb slides to the
+    // next finger before the last one is fully open, so waiting for the
+    // release threshold felt slow. Switch as soon as another finger is
+    // pressed and clearly closer than the held one.
+    if (closest !== null && closest !== current && distances[closest] < distances[current] - SWITCH_MARGIN) {
+      activeFinger[side] = closest
+      return closest
     }
-    activeFinger[side] = null
+    return current // still held
   }
 
-  // Not pinching: start on the closest finger under the press threshold.
+  // Not pinching (or just released): start on the closest pressed finger.
+  activeFinger[side] = closest
+  return closest
+}
+
+// The closest finger under the press threshold, or null.
+function findClosestPressedFinger(distances: PinchDistances): FingerName | null {
   let closest: FingerName | null = null
   for (const fingertip of FINGERTIP_LANDMARKS) {
     const distance = distances[fingertip.finger]
@@ -61,7 +78,6 @@ export function updatePinch(side: HandSide, distances: PinchDistances): FingerNa
       closest = fingertip.finger
     }
   }
-  activeFinger[side] = closest
   return closest
 }
 
