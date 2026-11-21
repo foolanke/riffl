@@ -47,3 +47,10 @@ author in any public release.
 (https://github.com/nbrosowsky/tonejs-instruments), samples licensed CC-BY 3.0.
 Every 3 semitones from C3 to C6; Tone.Sampler fills in the notes between.
 CC-BY needs credit in any public release.
+
+## Flute (extra melody instruments "Flute" and "Low flute", for Mask Off; not in SPEC 3.5)
+
+`flute/*.mp3`: flute samples from tonejs-instruments by Nicholas Brosowsky
+(https://github.com/nbrosowsky/tonejs-instruments), samples licensed CC-BY 3.0.
+C, E and A from C4 to C7; Tone.Sampler fills in the notes between.
+The low flute reuses these samples an octave down. CC-BY needs credit in any public release.
