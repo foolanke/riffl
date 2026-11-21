@@ -16,13 +16,16 @@
 | Piece | Choice | Job |
 |---|---|---|
 | App type | Browser app, no backend | One process to run at the demo |
-| Language | Plain JavaScript (ES modules), no TypeScript | Readable by the whole team |
-| Dev server | Vite (`npm run dev`) | Serves on localhost; camera and mic only work on localhost or https |
+| Language | TypeScript | Type checking catches mistakes early |
+| UI | React | Screens and controls |
+| Dev server | Vite, React + TypeScript template (`npm run dev`) | Serves on localhost; camera and mic only work on localhost or https |
 | Audio | Tone.js | Beat clock, metronome, sample playback |
 | Hand tracking | MediaPipe Hand Landmarker (`@mediapipe/tasks-vision`) | Hand positions from the webcam, in the browser |
 | Browser | Chrome only | The demo browser |
 
 Hit detection is a sudden-loudness check written by hand. No audio analysis library.
+
+**Engine vs. UI.** `audio/`, `vision/` and `project/` are plain TypeScript with no React in them. React only displays state and sends commands. Audio timing must never depend on React re-renders.
 
 ### 0.2 Offline rule
 Every dependency, the hand-tracking model files, and the drum samples live inside the repo. Nothing loads from the internet at runtime.
@@ -34,11 +37,11 @@ sounds/
   docs/SPEC.md       this doc
   index.html
   src/
-    main.js          starts everything
+    main.tsx         starts the React app
     audio/           clock, metronome, mic recording, hit detection, playback
     vision/          camera, hand tracking, object boxes
     project/         project data, save/load, undo
-    ui/              screens and controls
+    ui/              React components (screens and controls)
   public/
     samples/         drum sounds (.wav)
     models/          hand-tracking model files
@@ -50,7 +53,7 @@ The whole project (settings, objects, layers, hits) is one plain data object. Sa
 Saved two ways: automatically in the browser after every change, and as a downloadable file that can be loaded on another laptop.
 
 ### 0.5 Screens
-The screen design is being done separately. Until it arrives, use plain, unstyled, functional controls (buttons, sliders, dropdowns, text). Do not spend time on layout or styling.
+The screen design is being done separately. Until it arrives, use plain, unstyled, functional React components (buttons, sliders, dropdowns, text). Do not spend time on layout or styling.
 
 ### 0.6 Keyboard
 | Key | Action |
