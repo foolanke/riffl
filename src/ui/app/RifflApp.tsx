@@ -240,7 +240,7 @@ export function RifflApp() {
   return (
     <div className="page">
       <div className="main">
-        <CameraView hudLabel={hudLabel} hintText={hintText} cameraOk={cameraOk} />
+        <CameraView hudLabel={hudLabel} hintText={hintText} cameraOk={cameraOk} melodyActive={melodyActive} />
         <LayersPanel items={items} onAddLayer={handleAddLayer} />
       </div>
 
