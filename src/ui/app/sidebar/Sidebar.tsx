@@ -37,7 +37,7 @@ export function Sidebar(props: SidebarProps) {
               <LayerCard
                 key={item.key}
                 item={item}
-                expanded={isActive}
+                expanded={cards.isExpanded(item)}
                 recorderStatus={recorder.status}
                 isRecordingThis={cards.recordingKey === item.key}
                 message={isActive ? recorder.message : ''}

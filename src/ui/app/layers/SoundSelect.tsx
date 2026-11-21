@@ -6,6 +6,7 @@ import type { DrumName } from '../../../audio/drums.ts'
 import { INSTRUMENTS } from '../../../audio/instruments.ts'
 import type { InstrumentName } from '../../../audio/instruments.ts'
 import { Select } from '../components/Select.tsx'
+import type { SelectGroup } from '../components/Select.tsx'
 import type { LayerSound } from './layerItems.ts'
 
 interface SoundSelectProps {
@@ -17,32 +18,28 @@ interface SoundSelectProps {
 }
 
 export function SoundSelect(props: SoundSelectProps) {
+  const groups: SelectGroup[] = []
+  if (props.showDrums) {
+    groups.push({
+      label: 'Drums',
+      options: DRUMS.map((drum) => ({ value: 'drum:' + drum.name, text: drum.label })),
+    })
+  }
+  if (props.showInstruments) {
+    groups.push({
+      label: 'Melody',
+      options: INSTRUMENTS.map((instrument) => ({ value: 'melody:' + instrument.name, text: instrument.label })),
+    })
+  }
+
   return (
     <Select
       label="Sound"
       value={props.sound ? encodeSound(props.sound) : ''}
+      groups={groups}
       disabled={props.disabled}
       onChange={(value) => props.onChange(decodeSound(value))}
-    >
-      {props.showDrums ? (
-        <optgroup label="DRUMS">
-          {DRUMS.map((drum) => (
-            <option key={drum.name} value={'drum:' + drum.name}>
-              {drum.label.toUpperCase()}
-            </option>
-          ))}
-        </optgroup>
-      ) : null}
-      {props.showInstruments ? (
-        <optgroup label="MELODY">
-          {INSTRUMENTS.map((instrument) => (
-            <option key={instrument.name} value={'melody:' + instrument.name}>
-              {instrument.label.toUpperCase()}
-            </option>
-          ))}
-        </optgroup>
-      ) : null}
-    </Select>
+    />
   )
 }
 

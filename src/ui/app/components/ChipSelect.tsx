@@ -1,11 +1,9 @@
-// A native select in the BPM chip's look (design.md 5.4): grey chip, Item
-// text, chevron. Used for tempo and the compact settings.
-import { ICONS } from '../icons.ts'
+// The BPM chip's look (design.md 5.4): grey chip, Item text, chevron, with
+// an animated option list (Dropdown). Used for tempo and compact settings.
+import { Dropdown } from './Dropdown.tsx'
+import type { DropdownOption } from './Dropdown.tsx'
 
-export interface ChipOption {
-  value: string
-  text: string
-}
+export type ChipOption = DropdownOption
 
 interface ChipSelectProps {
   label: string // read by screen readers
@@ -17,24 +15,13 @@ interface ChipSelectProps {
 
 export function ChipSelect(props: ChipSelectProps) {
   return (
-    <div className={'bpm-chip' + (props.disabled ? ' is-disabled' : '')}>
-      <select
-        className="text-item"
-        aria-label={props.label}
-        value={props.value}
-        disabled={props.disabled}
-        onChange={(event) => {
-          props.onChange(event.target.value)
-          event.target.blur() // so Space records instead of opening the list
-        }}
-      >
-        {props.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.text.toUpperCase()}
-          </option>
-        ))}
-      </select>
-      <img src={ICONS.chevronDown} alt="" />
-    </div>
+    <Dropdown
+      variant="chip"
+      label={props.label}
+      value={props.value}
+      groups={[{ options: props.options }]}
+      disabled={props.disabled}
+      onChange={props.onChange}
+    />
   )
 }

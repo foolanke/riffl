@@ -6,7 +6,8 @@
 // the screen (human's request). Not designed, so built from existing parts:
 // compact rows like the metronome strip (5.4) with BPM-chip selects, the
 // toggle switch, and outline buttons (5.5, 5.6), in boxed groups.
-// Esc, CLOSE or a click outside the panel closes it.
+// Esc, CLOSE or a click outside the panel closes it. Opening fades the page
+// dim in and slides the panel up into place; closing plays it backwards.
 import { useEffect } from 'react'
 import { setMuteLayersWhileRecording, setTakeSpeed, TAKE_SPEEDS } from '../../../audio/recorder.ts'
 import {
@@ -22,21 +23,29 @@ import { ChipSelect } from '../components/ChipSelect.tsx'
 import { OutlineButton } from '../components/OutlineButton.tsx'
 import { ToggleSwitch } from '../components/ToggleSwitch.tsx'
 import { useRecorder } from '../hooks/engineState.ts'
+import { usePresence } from '../hooks/usePresence.ts'
 import { MicSettings } from './MicSettings.tsx'
 import { ProjectFileSettings } from './ProjectFileSettings.tsx'
 import { SettingsGroup, SettingsRow, SliderRow } from './SettingsRow.tsx'
 
+const ANIMATION_MS = 120 // keep in step with the settings animations in settings.css
+
 interface SettingsOverlayProps {
+  open: boolean
   showMic: boolean // false on the start screen: the mic needs audio started first
   onClose: () => void
 }
 
 export function SettingsOverlay(props: SettingsOverlayProps) {
   const onClose = props.onClose
+  const presence = usePresence(props.open, ANIMATION_MS)
 
   // Esc closes the overlay.
   useEffect(
     function () {
+      if (!props.open) {
+        return
+      }
       function handleKeyDown(event: KeyboardEvent) {
         if (event.key === 'Escape') {
           onClose()
@@ -47,12 +56,16 @@ export function SettingsOverlay(props: SettingsOverlayProps) {
         window.removeEventListener('keydown', handleKeyDown)
       }
     },
-    [onClose],
+    [props.open, onClose],
   )
+
+  if (!presence.mounted) {
+    return null
+  }
 
   return (
     <div
-      className="settings-backdrop"
+      className={'settings-backdrop' + (presence.closing ? ' is-closing' : '')}
       onPointerDown={(event) => {
         // Only a click on the dimmed area itself, not inside the panel.
         if (event.target === event.currentTarget) {
