@@ -6,7 +6,7 @@
 // One voice per hand per instrument (SPEC 3.4: one note per hand), so
 // both hands can hold the same pitch (e.g. C5 from either column) and
 // releasing one hand never cuts the other's note.
-// Offline rule (SPEC 0.2): guitar, piano and 808 samples are in public/samples/.
+// Offline rule (SPEC 0.2): guitar, piano, flute and 808 samples are in public/samples/.
 // Every chain ends on the melody bus, which pumps with the kick (masterBus.ts).
 import * as Tone from 'tone'
 import { INSTRUMENTS } from './instruments.ts'
@@ -174,6 +174,29 @@ function createNotePlayer(instrument: InstrumentName): NotePlayer {
     synth.volume.value = -16 // four notes x seven saws per pinch
     return synth
   }
+  if (instrument === 'flute' || instrument === 'lowFlute') {
+    // Real flute samples (C4-C7, every 3-4 semitones). A soft attack and
+    // a release long enough to breathe out, like the Mask Off loop.
+    // The low flute plays the same samples an octave down (getNotesToPlay).
+    const sampler = new Tone.Sampler({
+      urls: {
+        C4: 'C4.mp3',
+        E4: 'E4.mp3',
+        A4: 'A4.mp3',
+        C5: 'C5.mp3',
+        E5: 'E5.mp3',
+        A5: 'A5.mp3',
+        C6: 'C6.mp3',
+        E6: 'E6.mp3',
+        A6: 'A6.mp3',
+        C7: 'C7.mp3',
+      },
+      baseUrl: import.meta.env.BASE_URL + 'samples/flute/',
+      attack: 0.02,
+      release: 0.35,
+    }).connect(output)
+    return sampler
+  }
   // bass808: the 808 drum sample, pitched to the note. The sample is
   // about 50 Hz, which is G1, so it's mapped there.
   const sampler = new Tone.Sampler({
@@ -236,6 +259,24 @@ function buildChain(instrument: InstrumentName): Tone.ToneAudioNode {
   if (instrument === 'bass') {
     // Dry: reverb on bass turns to mud.
     return new Tone.Volume(-6).connect(getMelodyBus())
+  }
+  if (instrument === 'flute') {
+    // Mask Off: the flute is an old sampled record, so it sits in a big,
+    // dark room with a soft echo. Low cut keeps it off the 808; a gentle
+    // high cut takes the edge off like the vintage sample.
+    const volume = new Tone.Volume(0).connect(getMelodyBus())
+    const reverb = new Tone.Reverb({ decay: 3.5, preDelay: 0.02, wet: 0.35 }).connect(volume)
+    const echo = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.25, wet: 0.18 }).connect(reverb)
+    const highCut = new Tone.Filter({ type: 'lowpass', frequency: 7000, Q: 0.5 }).connect(echo)
+    return new Tone.Filter({ type: 'highpass', frequency: 250, Q: 0.7 }).connect(highCut)
+  }
+  if (instrument === 'lowFlute') {
+    // Darker and breathier than the flute, more room: sits under it.
+    const volume = new Tone.Volume(2).connect(getMelodyBus())
+    const reverb = new Tone.Reverb({ decay: 4.5, preDelay: 0.03, wet: 0.4 }).connect(volume)
+    const echo = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.2, wet: 0.12 }).connect(reverb)
+    const highCut = new Tone.Filter({ type: 'lowpass', frequency: 3500, Q: 0.5 }).connect(echo)
+    return new Tone.Filter({ type: 'highpass', frequency: 120, Q: 0.7 }).connect(highCut)
   }
   // bass808: same character as the 808 drum (samples.ts): light
   // saturation so it's heard on laptop speakers, then a long, wet reverb.
