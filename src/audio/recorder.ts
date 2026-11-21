@@ -1,11 +1,19 @@
-// Recording a take (SPEC 1.3, steps 12-14):
+// Recording a take (SPEC 1.3, steps 12-17):
 //   Space -> count-in -> record exactly one loop of mic audio -> stop on its own
 //   -> find hits -> snap to the 16th grid -> new looping layer with the chosen drum.
 //
 // The transport keeps looping after the take, so the new layer plays
 // from the next loop onward (SPEC 1.3).
+//
+// Recording over layers (step 16): existing layers play during the take,
+// unless "mute layers while recording" is on. Sound from the speakers can
+// leak into the mic; see the speaker check in processTake.
+//
+// Retake (step 17): records a take for one existing layer and replaces
+// its hits. That layer is silent during its own retake.
 import * as Tone from 'tone'
-import { addLayers } from '../project/projectStore.ts'
+import { addTakeLayer, getProject, replaceLayerHits } from '../project/projectStore.ts'
+import type { Layer } from '../project/projectStore.ts'
 import { buildRecording, waitUntilAudioTime } from './audioTiming.ts'
 import { playForTake } from './clock.ts'
 import type { TakeTiming } from './clock.ts'
@@ -22,17 +30,28 @@ import { snapHitsToSteps, wrapStep } from './snapping.ts'
 const PRE_ROLL_SECONDS = 0.15
 const POST_ROLL_MARGIN_SECONDS = 0.2
 
+// Speaker check: after lag correction, sound leaking from the speakers lands
+// almost exactly on the step where the app played it. A hit that close to a
+// step the app was playing must be this many times louder than the threshold
+// (2x = +6 dB) to count. A real tap near the mic is much louder than leakage.
+const SPEAKER_WINDOW_SECONDS = 0.03
+const SPEAKER_LOUDNESS_FACTOR = 2
+// How much audio after a hit's start is used to measure its loudness.
+const HIT_PEAK_WINDOW_SECONDS = 0.01
+
 export type RecordStatus = 'idle' | 'countIn' | 'recording' | 'processing'
 
 export interface HitReport {
-  timeMs: number // from the loop start
-  step: number // nearest 16th step it snapped to
+  timeMs: number // from the loop start, lag already subtracted
+  step: number // nearest 16th step
   offsetMs: number // how early (-) or late (+) it was vs that step
   positionLabel: string // bar.beat.sixteenth, e.g. "1.2.1"
+  ignoredAsSpeaker: boolean // true = probably the speakers, not a tap
 }
 
 export interface TakeReport {
   drum: DrumName
+  isRetake: boolean
   loopSeconds: number
   recordedSeconds: number
   hits: HitReport[]
@@ -42,20 +61,29 @@ export interface TakeReport {
 export interface RecorderState {
   status: RecordStatus
   takeDrum: DrumName
+  muteLayersWhileRecording: boolean
+  retakeLayerId: string | null // set while a retake is running
   lastTake: TakeReport | null
-  errorText: string
+  message: string
 }
 
 let state: RecorderState = {
   status: 'idle',
   takeDrum: 'kick',
+  muteLayersWhileRecording: false,
+  retakeLayerId: null,
   lastTake: null,
-  errorText: '',
+  message: '',
 }
 const listeners = new Set<() => void>()
 
 // The exact one-loop recording, for "Play recording".
 let lastTakeAudio: Float32Array | null = null
+
+// Which layers the layer player must keep quiet, and until when (audio clock).
+let silenceUntilTime = 0
+let silenceAllLayers = false
+let silenceLayerId: string | null = null
 
 function setState(changes: Partial<RecorderState>): void {
   state = { ...state, ...changes }
@@ -79,38 +107,118 @@ export function setTakeDrum(drum: DrumName): void {
   setState({ takeDrum: drum })
 }
 
+export function setMuteLayersWhileRecording(mute: boolean): void {
+  setState({ muteLayersWhileRecording: mute })
+}
+
+// Asked by the layer player for every hit it is about to play.
+export function isLayerSilencedAt(layerId: string, time: number): boolean {
+  if (time >= silenceUntilTime) {
+    return false
+  }
+  return silenceAllLayers || layerId === silenceLayerId
+}
+
 // ---- Recording ----
 
-export async function recordTake(): Promise<void> {
+// New take, or a retake of one layer if retakeLayerId is given.
+export async function recordTake(retakeLayerId?: string): Promise<void> {
   if (state.status !== 'idle') {
     return
   }
-  const drum = state.takeDrum
-  // Read once so the whole take uses the same value.
+
+  let drum = state.takeDrum
+  let retakeLayer: Layer | null = null
+  if (retakeLayerId !== undefined) {
+    retakeLayer = findLayer(retakeLayerId)
+    if (!retakeLayer) {
+      return
+    }
+    drum = retakeLayer.drum
+  }
+
+  // Read once so the whole take uses the same values.
   const lagSeconds = getLagSeconds()
   const postRollSeconds = Math.max(0, lagSeconds) + POST_ROLL_MARGIN_SECONDS
+
   try {
     await startMic()
-    setState({ status: 'countIn', errorText: '' })
+    setState({
+      status: 'countIn',
+      message: '',
+      retakeLayerId: retakeLayer ? retakeLayer.id : null,
+    })
+
+    // Silence layers from now until the end of the recorded loop.
+    silenceAllLayers = state.muteLayersWhileRecording
+    silenceLayerId = retakeLayer ? retakeLayer.id : null
+    silenceUntilTime = Infinity
 
     startCapture()
     const timing = playForTake()
+    const loopEndTime = timing.loopStartTime + timing.loopSeconds
+    silenceUntilTime = loopEndTime
+    const speakerSteps = getStepsPlayedBySpeakers(timing)
 
     await waitUntilAudioTime(timing.loopStartTime)
     setState({ status: 'recording' })
 
-    const loopEndTime = timing.loopStartTime + timing.loopSeconds
     await waitUntilAudioTime(loopEndTime + postRollSeconds)
     setState({ status: 'processing' })
 
     const chunks = stopCapture()
-    const report = processTake(chunks, timing, drum, lagSeconds, postRollSeconds)
-    setState({ status: 'idle', lastTake: report })
+    const report = processTake(chunks, timing, drum, lagSeconds, postRollSeconds, speakerSteps)
+    report.isRetake = retakeLayer !== null
+
+    // Commit the result (undoable).
+    let message = ''
+    if (report.snappedSteps.length === 0) {
+      message = retakeLayer ? 'No hits found, so the old layer was kept.' : 'No hits found, so no layer was added.'
+    } else if (retakeLayer) {
+      replaceLayerHits(retakeLayer.id, report.snappedSteps)
+    } else {
+      addTakeLayer({ id: crypto.randomUUID(), drum: drum, hits: report.snappedSteps, muted: false })
+    }
+    setState({ status: 'idle', lastTake: report, retakeLayerId: null, message: message })
   } catch (error) {
     console.error(error)
     stopCapture()
-    setState({ status: 'idle', errorText: 'Recording failed: ' + String(error) })
+    silenceUntilTime = 0
+    setState({ status: 'idle', retakeLayerId: null, message: 'Recording failed: ' + String(error) })
   }
+}
+
+function findLayer(layerId: string): Layer | null {
+  for (const layer of getProject().layers) {
+    if (layer.id === layerId) {
+      return layer
+    }
+  }
+  return null
+}
+
+// Steps in the loop where the app itself makes a sound during this take:
+// unmuted, unsilenced layers, plus metronome clicks if the metronome is on.
+function getStepsPlayedBySpeakers(timing: TakeTiming): Set<number> {
+  const project = getProject()
+  const steps = new Set<number>()
+  for (const layer of project.layers) {
+    const silenced = silenceAllLayers || layer.id === silenceLayerId
+    if (layer.muted || silenced) {
+      continue
+    }
+    for (const step of layer.hits) {
+      if (step < timing.stepsInLoop) {
+        steps.add(step)
+      }
+    }
+  }
+  if (project.settings.metronomeOn) {
+    for (let step = 0; step < timing.stepsInLoop; step += timing.stepsPerClick) {
+      steps.add(step)
+    }
+  }
+  return steps
 }
 
 function processTake(
@@ -119,6 +227,7 @@ function processTake(
   drum: DrumName,
   lagSeconds: number,
   postRollSeconds: number,
+  speakerSteps: Set<number>,
 ): TakeReport {
   const sampleRate = Tone.getContext().sampleRate
 
@@ -153,30 +262,53 @@ function processTake(
     if (hitTime < -halfStep || hitTime >= timing.loopSeconds - halfStep) {
       continue
     }
-    keptHitTimes.push(hitTime)
 
     const nearestStep = Math.round(hitTime / timing.stepSeconds)
+    const wrappedStep = wrapStep(nearestStep, timing.stepsInLoop)
+    const offsetSeconds = hitTime - nearestStep * timing.stepSeconds
+
+    // Speaker check (step 16).
+    const nearSpeakerSound =
+      speakerSteps.has(wrappedStep) && Math.abs(offsetSeconds) <= SPEAKER_WINDOW_SECONDS
+    const hitPeak = getPeakAfter(windowSamples, hitIndex, Math.round(HIT_PEAK_WINDOW_SECONDS * sampleRate))
+    const ignoredAsSpeaker = nearSpeakerSound && hitPeak < threshold * SPEAKER_LOUDNESS_FACTOR
+
+    if (!ignoredAsSpeaker) {
+      keptHitTimes.push(hitTime)
+    }
     hitReports.push({
       timeMs: hitTime * 1000,
-      step: wrapStep(nearestStep, timing.stepsInLoop),
-      offsetMs: (hitTime - nearestStep * timing.stepSeconds) * 1000,
-      positionLabel: getPositionLabel(wrapStep(nearestStep, timing.stepsInLoop), timing.stepsPerBar),
+      step: wrappedStep,
+      offsetMs: offsetSeconds * 1000,
+      positionLabel: getPositionLabel(wrappedStep, timing.stepsPerBar),
+      ignoredAsSpeaker: ignoredAsSpeaker,
     })
   }
 
-  // Snap and add the new layer (step 14).
+  // Snap (step 14).
   const snappedSteps = snapHitsToSteps(keptHitTimes, timing.stepSeconds, timing.stepsInLoop)
-  if (snappedSteps.length > 0) {
-    addLayers([{ id: crypto.randomUUID(), drum: drum, hits: snappedSteps, muted: false }])
-  }
 
   return {
     drum: drum,
+    isRetake: false,
     loopSeconds: timing.loopSeconds,
     recordedSeconds: lastTakeAudio.length / sampleRate,
     hits: hitReports,
     snappedSteps: snappedSteps,
   }
+}
+
+// Loudest absolute sample in [start, start + length).
+function getPeakAfter(samples: Float32Array, start: number, length: number): number {
+  let peak = 0
+  const end = Math.min(samples.length, start + length)
+  for (let i = start; i < end; i++) {
+    const amplitude = Math.abs(samples[i])
+    if (amplitude > peak) {
+      peak = amplitude
+    }
+  }
+  return peak
 }
 
 // "bar.beat.sixteenth", all 1-based. Beats are quarter notes (4 steps).

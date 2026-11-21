@@ -1,12 +1,16 @@
-// The list of layers with mute and delete (SPEC step 9).
+// The list of layers with mute, retake and delete (SPEC steps 9, 17).
 // Keys 1-9 also toggle mute; that's handled in App.
+import { useSyncExternalStore } from 'react'
 import { getDrumLabel } from '../audio/drums.ts'
+import { getRecorderState, recordTake, subscribeToRecorder } from '../audio/recorder.ts'
 import { addLayers, deleteLayer, getProject, toggleLayerMuted } from '../project/projectStore.ts'
 import { createTestLayers } from '../project/testLayers.ts'
 import { useProject } from './hooks.ts'
 
 export function LayerList() {
   const layers = useProject().layers
+  const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
+  const isBusy = recorder.status !== 'idle'
 
   function handleAddTestLayers() {
     addLayers(createTestLayers(getProject().settings))
@@ -21,12 +25,18 @@ export function LayerList() {
         {layers.map((layer, index) => (
           <li key={layer.id}>
             {getDrumLabel(layer.drum)} ({layer.hits.length} hits)
-            {layer.muted ? ' [muted]' : ''}{' '}
+            {layer.muted ? ' [muted]' : ''}
+            {recorder.retakeLayerId === layer.id ? ' [RETAKING]' : ''}{' '}
             <button onClick={() => toggleLayerMuted(layer.id)}>
               {layer.muted ? 'Unmute' : 'Mute'}
               {index < 9 ? ` (${index + 1})` : ''}
             </button>{' '}
-            <button onClick={() => deleteLayer(layer.id)}>Delete</button>
+            <button onClick={() => recordTake(layer.id)} disabled={isBusy}>
+              Retake
+            </button>{' '}
+            <button onClick={() => deleteLayer(layer.id)} disabled={isBusy}>
+              Delete
+            </button>
           </li>
         ))}
       </ol>

@@ -25,7 +25,11 @@ let sampleBuffer: Float32Array<ArrayBuffer> = new Float32Array(0)
 let lastReadTime = 0
 let latestPeak = 0
 
-let sensitivity = 40 // 0..100, see hitDetection.ts
+// 0..100, see hitDetection.ts. Saved per laptop (depends on the room and mic,
+// not the project), so it is not part of the project file.
+const SENSITIVITY_STORAGE_KEY = 'sounds.micSensitivity'
+const DEFAULT_SENSITIVITY = 40
+let sensitivity = loadSavedSensitivity()
 const detector = createHitDetector()
 const hitListeners = new Set<() => void>()
 
@@ -156,6 +160,24 @@ export function getSensitivity(): number {
 
 export function setSensitivity(value: number): void {
   sensitivity = Math.min(100, Math.max(0, value))
+  try {
+    window.localStorage.setItem(SENSITIVITY_STORAGE_KEY, String(sensitivity))
+  } catch {
+    // Still works for this session even if it can't be saved.
+  }
+}
+
+function loadSavedSensitivity(): number {
+  try {
+    const text = window.localStorage.getItem(SENSITIVITY_STORAGE_KEY)
+    const value = Number(text)
+    if (text !== null && Number.isFinite(value) && value >= 0 && value <= 100) {
+      return value
+    }
+  } catch {
+    // Fall through to the default.
+  }
+  return DEFAULT_SENSITIVITY
 }
 
 export function getHitThresholdDb(): number {

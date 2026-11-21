@@ -29,9 +29,12 @@ export interface Layer {
 }
 
 export interface Project {
+  version: number // file format version, for loading saves later
   settings: ProjectSettings
   layers: Layer[]
 }
+
+export const PROJECT_VERSION = 1
 
 // 16th-note grid steps in one bar (SPEC 2.3). 6/8 = 6 eighths = 12 sixteenths.
 export function getStepsPerBar(timeSignature: TimeSignature): number {
@@ -66,6 +69,7 @@ export const KEYS: string[] = buildKeyList()
 // Defaults are the demo song's settings: I Gotta Feeling (SPEC 2.4).
 export function createDefaultProject(): Project {
   return {
+    version: PROJECT_VERSION,
     settings: {
       tempoBpm: 128,
       timeSignature: '4/4',
@@ -110,6 +114,58 @@ function setProject(newProject: Project): void {
   for (const listener of listeners) {
     listener()
   }
+}
+
+// Swap in a whole project (loading a save or starting fresh).
+// Undo history belongs to the old project, so it is cleared.
+export function replaceProject(newProject: Project): void {
+  undoStack.length = 0
+  setProject(newProject)
+}
+
+// ---- Undo (SPEC 1.6: undo deletes the most recent take) ----
+// Before every take the layer list is copied onto this stack. Undo puts
+// the copy back, which removes a new take or brings back a retaken layer.
+// Layers are never edited in place, so copying the array is enough.
+
+const MAX_UNDO_STEPS = 50
+const undoStack: Layer[][] = []
+
+function rememberLayersForUndo(): void {
+  undoStack.push([...currentProject.layers])
+  if (undoStack.length > MAX_UNDO_STEPS) {
+    undoStack.shift()
+  }
+}
+
+// Returns false if there was nothing to undo.
+export function undoLastTake(): boolean {
+  const previousLayers = undoStack.pop()
+  if (!previousLayers) {
+    return false
+  }
+  setProject({ ...currentProject, layers: previousLayers })
+  return true
+}
+
+// A new take becomes a new layer (SPEC 1.6), undoable.
+export function addTakeLayer(layer: Layer): void {
+  rememberLayersForUndo()
+  addLayers([layer])
+}
+
+// A retake replaces one layer's hits, keeping its place in the list. Undoable.
+export function replaceLayerHits(layerId: string, hits: number[]): void {
+  rememberLayersForUndo()
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId) {
+      updated.push({ ...layer, hits: hits })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
 }
 
 // ---- Layers ----
