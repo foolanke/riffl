@@ -55,7 +55,7 @@ export function StartOverlay(props: StartOverlayProps) {
   return (
     <div className="start-overlay">
       <div className="start-overlay-content">
-        <BrandBadge showSidebarToggle={false} />
+        <BrandBadge audioStarted={false} />
         <button
           className="button-filled button-download text-item"
           type="button"

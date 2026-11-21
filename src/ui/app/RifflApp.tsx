@@ -50,7 +50,6 @@ import { buildLayerItems, findItem, getItemSound, isMelodyItem } from './layerIt
 import type { DraftLayer, LayerItem, LayerSound } from './layerItems.ts'
 import { MetronomeStrip } from './MetronomeStrip.tsx'
 import { ObjectMarkers } from './ObjectMarkers.tsx'
-import { SettingsSection } from './SettingsSection.tsx'
 import { StartOverlay } from './StartOverlay.tsx'
 
 const SETUP_HINT = 'Point the camera at an object, then press record'
@@ -364,7 +363,7 @@ export function RifflApp() {
       </div>
 
       <aside className="sidebar">
-        <BrandBadge />
+        <BrandBadge audioStarted />
         <MetronomeStrip />
 
         {cardOrder.length > 0 ? (
@@ -391,8 +390,6 @@ export function RifflApp() {
         ) : null}
 
         <div className="sidebar-spacer" />
-
-        <SettingsSection />
 
         <CameraConfirmToggle />
         <CalibrationSection cameraOk={cameraOk} />
