@@ -67,6 +67,10 @@ export function MicPanel() {
     let frameId = 0
     let shownPeak = 0
     function drawMeter() {
+      // Recording can switch the mic on too; hide the button once it is on.
+      if (isMicOn()) {
+        setMicOn(true)
+      }
       shownPeak = Math.max(getMicPeak(), shownPeak * METER_FALL_PER_FRAME)
       if (meterFillRef.current) {
         const percent = decibelsToMeterPercent(amplitudeToDecibels(shownPeak))

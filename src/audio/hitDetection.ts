@@ -71,3 +71,44 @@ export function checkBlockForHit(
 
   return isHit
 }
+
+// Small blocks give ~1.3ms timing resolution on a recorded take.
+const OFFLINE_BLOCK_SIZE = 64
+
+// Runs the same check over a whole recording (SPEC step 13).
+// Returns the sample index where each hit starts.
+export function findHitsInSamples(
+  samples: Float32Array,
+  sampleRate: number,
+  thresholdAmplitude: number,
+): number[] {
+  const detector = createHitDetector()
+  const hitIndices: number[] = []
+  const blockSeconds = OFFLINE_BLOCK_SIZE / sampleRate
+
+  for (let blockStart = 0; blockStart < samples.length; blockStart += OFFLINE_BLOCK_SIZE) {
+    const blockEnd = Math.min(blockStart + OFFLINE_BLOCK_SIZE, samples.length)
+
+    let blockPeak = 0
+    for (let i = blockStart; i < blockEnd; i++) {
+      const amplitude = Math.abs(samples[i])
+      if (amplitude > blockPeak) {
+        blockPeak = amplitude
+      }
+    }
+
+    const blockTime = blockStart / sampleRate
+    if (checkBlockForHit(detector, blockPeak, blockSeconds, blockTime, thresholdAmplitude)) {
+      // The hit starts at the first sample in the block that crosses the threshold.
+      let hitIndex = blockStart
+      for (let i = blockStart; i < blockEnd; i++) {
+        if (Math.abs(samples[i]) >= thresholdAmplitude) {
+          hitIndex = i
+          break
+        }
+      }
+      hitIndices.push(hitIndex)
+    }
+  }
+  return hitIndices
+}

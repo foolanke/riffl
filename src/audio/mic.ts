@@ -13,8 +13,13 @@ import {
   decibelsToAmplitude,
   sensitivityToThresholdDb,
 } from './hitDetection.ts'
+import { RECORDER_PROCESSOR_NAME, createRecorderWorkletUrl } from './recorderWorklet.ts'
+import type { CapturedChunk } from './recorderWorklet.ts'
 
 let micStream: MediaStream | null = null
+let micStarting: Promise<void> | null = null
+// While a take is being captured, raw mic chunks are collected here.
+let capturedChunks: CapturedChunk[] | null = null
 let analyser: AnalyserNode | null = null
 let sampleBuffer: Float32Array<ArrayBuffer> = new Float32Array(0)
 let lastReadTime = 0
@@ -29,11 +34,20 @@ function getAudioContext(): AudioContext {
 }
 
 // Asks for mic permission and starts listening. Call after startAudio().
-export async function startMic(): Promise<void> {
-  if (micStream) {
-    return
+// Safe to call many times; only the first call does the work.
+export function startMic(): Promise<void> {
+  if (!micStarting) {
+    micStarting = openMic()
+    // If it failed (e.g. permission denied), allow trying again.
+    micStarting.catch(function () {
+      micStarting = null
+    })
   }
-  micStream = await navigator.mediaDevices.getUserMedia({
+  return micStarting
+}
+
+async function openMic(): Promise<void> {
+  const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
       noiseSuppression: false,
@@ -42,7 +56,22 @@ export async function startMic(): Promise<void> {
   })
 
   const audioContext = getAudioContext()
-  const source = audioContext.createMediaStreamSource(micStream)
+  const source = audioContext.createMediaStreamSource(stream)
+
+  // Recorder worklet: raw samples with exact frame numbers, for takes.
+  await Tone.getContext().addAudioWorkletModule(createRecorderWorkletUrl())
+  const recorderNode = Tone.getContext().createAudioWorkletNode(RECORDER_PROCESSOR_NAME, {
+    numberOfInputs: 1,
+    numberOfOutputs: 1,
+    channelCount: 1, // mix to mono
+    channelCountMode: 'explicit',
+  })
+  recorderNode.port.onmessage = function (event: MessageEvent<CapturedChunk>) {
+    if (capturedChunks) {
+      capturedChunks.push(event.data)
+    }
+  }
+  source.connect(recorderNode)
   analyser = audioContext.createAnalyser()
   analyser.fftSize = 2048 // ~43ms of audio at 48kHz, longer than one screen frame
   sampleBuffer = new Float32Array(analyser.fftSize)
@@ -53,10 +82,25 @@ export async function startMic(): Promise<void> {
   const silentGain = audioContext.createGain()
   silentGain.gain.value = 0
   analyser.connect(silentGain)
+  recorderNode.connect(silentGain)
   silentGain.connect(audioContext.destination)
 
+  micStream = stream
   lastReadTime = audioContext.currentTime
   requestAnimationFrame(checkMicFrame)
+}
+
+// ---- Raw capture for takes ----
+
+export function startCapture(): void {
+  capturedChunks = []
+}
+
+// Stops collecting and returns everything captured since startCapture().
+export function stopCapture(): CapturedChunk[] {
+  const chunks = capturedChunks === null ? [] : capturedChunks
+  capturedChunks = null
+  return chunks
 }
 
 // Runs every screen frame. Looks only at the audio that arrived since the
