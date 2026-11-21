@@ -1,4 +1,4 @@
-// Plays every unmuted layer's hits on the 16th-note grid, in time with the clock.
+// Plays every unmuted layer on the 16th-note grid, in time with the clock.
 // Runs one check per 16th note, scheduled ahead on the Tone.js audio clock.
 // It reads the project data at schedule time, so mute/delete take effect
 // within one scheduling window (~0.1s).
@@ -29,8 +29,12 @@ function handleStepTime(time: number): void {
     if (layer.muted || isLayerSilencedAt(layer.id, time)) {
       continue
     }
-    if (layer.hits.includes(step)) {
-      playDrum(layer.drum, time)
+    if (layer.type === 'drum') {
+      if (layer.hits.includes(step)) {
+        playDrum(layer.drum, time)
+      }
     }
+    // Melody layers (type 'melody') start playing here in step 29, once
+    // the instruments exist (steps 26-27). Until then they are silent.
   }
 }

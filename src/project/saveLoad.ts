@@ -6,6 +6,8 @@
 // project, so a loaded file sounds the same on any laptop.
 import { DRUMS } from '../audio/drums.ts'
 import type { DrumName } from '../audio/drums.ts'
+import { INSTRUMENTS, isWhiteKeyPitch } from '../audio/instruments.ts'
+import type { InstrumentName } from '../audio/instruments.ts'
 import {
   COUNT_IN_OPTIONS,
   KEYS,
@@ -19,7 +21,16 @@ import {
   replaceProject,
   subscribeToProject,
 } from './projectStore.ts'
-import type { Box, Layer, Project, ProjectSettings, TrackedObject } from './projectStore.ts'
+import type {
+  Box,
+  DrumLayer,
+  Layer,
+  MelodyLayer,
+  MelodyNote,
+  Project,
+  ProjectSettings,
+  TrackedObject,
+} from './projectStore.ts'
 
 const STORAGE_KEY = 'sounds.project'
 
@@ -116,34 +127,91 @@ function parseSettings(data: Record<string, unknown>, defaults: ProjectSettings)
   return settings
 }
 
+// Drum and melody layers stay in one list, in their saved order.
+// A layer with no type comes from a version 1 file, which only had drums.
 function parseLayers(data: unknown[]): Layer[] {
   const layers: Layer[] = []
   for (const item of data) {
     if (!isObject(item)) {
       continue
     }
-    const drum = findDrumName(item.drum)
-    if (drum === null || !Array.isArray(item.hits)) {
-      continue
+    let layer: Layer | null = null
+    if (item.type === 'melody') {
+      layer = parseMelodyLayer(item)
+    } else if (item.type === 'drum' || item.type === undefined) {
+      layer = parseDrumLayer(item)
     }
-    const hits: number[] = []
-    for (const hit of item.hits) {
-      if (typeof hit === 'number' && Number.isInteger(hit) && hit >= 0) {
-        hits.push(hit)
-      }
+    if (layer !== null) {
+      layers.push(layer)
     }
-    const layer: Layer = {
-      id: typeof item.id === 'string' ? item.id : crypto.randomUUID(),
-      drum: drum,
-      hits: hits,
-      muted: item.muted === true,
-    }
-    if (typeof item.objectId === 'string') {
-      layer.objectId = item.objectId
-    }
-    layers.push(layer)
   }
   return layers
+}
+
+function parseDrumLayer(item: Record<string, unknown>): DrumLayer | null {
+  const drum = findDrumName(item.drum)
+  if (drum === null || !Array.isArray(item.hits)) {
+    return null
+  }
+  const hits: number[] = []
+  for (const hit of item.hits) {
+    if (isStep(hit)) {
+      hits.push(hit)
+    }
+  }
+  const layer: DrumLayer = {
+    type: 'drum',
+    id: parseLayerId(item),
+    drum: drum,
+    hits: hits,
+    muted: item.muted === true,
+  }
+  if (typeof item.objectId === 'string') {
+    layer.objectId = item.objectId
+  }
+  return layer
+}
+
+function parseMelodyLayer(item: Record<string, unknown>): MelodyLayer | null {
+  const instrument = findInstrumentName(item.instrument)
+  if (instrument === null || !Array.isArray(item.notes)) {
+    return null
+  }
+  const notes: MelodyNote[] = []
+  for (const note of item.notes) {
+    if (!isObject(note)) {
+      continue
+    }
+    // Minimum note length is one 16th (SPEC 3.7).
+    const lengthOk = typeof note.length === 'number' && Number.isInteger(note.length) && note.length >= 1
+    if (isStep(note.step) && lengthOk && isWhiteKeyPitch(note.pitch)) {
+      notes.push({ step: note.step, length: note.length as number, pitch: note.pitch })
+    }
+  }
+  return {
+    type: 'melody',
+    id: parseLayerId(item),
+    instrument: instrument,
+    notes: notes,
+    muted: item.muted === true,
+  }
+}
+
+function parseLayerId(item: Record<string, unknown>): string {
+  return typeof item.id === 'string' ? item.id : crypto.randomUUID()
+}
+
+function isStep(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function findInstrumentName(value: unknown): InstrumentName | null {
+  for (const instrument of INSTRUMENTS) {
+    if (instrument.name === value) {
+      return instrument.name
+    }
+  }
+  return null
 }
 
 function parseObjects(data: unknown[]): TrackedObject[] {

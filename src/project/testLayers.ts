@@ -2,12 +2,12 @@
 // Kick on every beat, clap on beats 2 and 4, open hi-hat on the offbeats.
 // Built for the current loop length and time signature.
 import { getStepsPerBar } from './projectStore.ts'
-import type { Layer, ProjectSettings } from './projectStore.ts'
+import type { DrumLayer, ProjectSettings } from './projectStore.ts'
 import type { DrumName } from '../audio/drums.ts'
 
 const STEPS_PER_BEAT = 4 // 16th notes per quarter-note beat
 
-export function createTestLayers(settings: ProjectSettings): Layer[] {
+export function createTestLayers(settings: ProjectSettings): DrumLayer[] {
   const stepsInLoop = getStepsPerBar(settings.timeSignature) * settings.loopBars
 
   const kickHits: number[] = []
@@ -30,6 +30,6 @@ export function createTestLayers(settings: ProjectSettings): Layer[] {
   ]
 }
 
-function makeLayer(drum: DrumName, hits: number[]): Layer {
-  return { id: crypto.randomUUID(), drum: drum, hits: hits, muted: false }
+function makeLayer(drum: DrumName, hits: number[]): DrumLayer {
+  return { type: 'drum', id: crypto.randomUUID(), drum: drum, hits: hits, muted: false }
 }

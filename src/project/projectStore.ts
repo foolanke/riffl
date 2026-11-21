@@ -4,6 +4,7 @@
 // new copy instead of editing it in place.
 // Plain TypeScript, no React (SPEC 0.1 "Engine vs. UI").
 import type { DrumName } from '../audio/drums.ts'
+import type { InstrumentName } from '../audio/instruments.ts'
 
 export type TimeSignature = '4/4' | '3/4' | '6/8'
 export type LoopBars = 1 | 2 | 4
@@ -19,16 +20,48 @@ export interface ProjectSettings {
   countInBars: CountInBars
 }
 
-// One recorded take (SPEC 1.6). Hits are 16th-note step numbers
-// counted from the start of the loop (0 = bar 1, beat 1).
-export interface Layer {
+// One recorded take (SPEC 1.6). Drum and melody takes share one layer list:
+// mute, delete, undo, retake and save/load treat them the same (SPEC 3.1).
+// Only playback and the take's input differ, so those check `type`.
+// Steps are 16th notes counted from the loop start (0 = bar 1, beat 1).
+export type Layer = DrumLayer | MelodyLayer
+
+export interface DrumLayer {
+  type: 'drum'
   id: string
+  muted: boolean
   drum: DrumName
   hits: number[]
-  muted: boolean
   // The object this take was played on (step 24), so a retake checks the
   // same box. Missing for takes recorded without an object.
   objectId?: string
+}
+
+// SPEC 3.10. A note sounds from `step` for `length` 16ths.
+export interface MelodyNote {
+  step: number
+  length: number
+  pitch: string // e.g. "G4"
+}
+
+export interface MelodyLayer {
+  type: 'melody'
+  id: string
+  muted: boolean
+  instrument: InstrumentName
+  notes: MelodyNote[]
+}
+
+// Every 16th step where a layer starts a sound. Used by the speaker check.
+export function getLayerSoundSteps(layer: Layer): number[] {
+  if (layer.type === 'drum') {
+    return layer.hits
+  }
+  const steps: number[] = []
+  for (const note of layer.notes) {
+    steps.push(note.step)
+  }
+  return steps
 }
 
 // A box on the camera image, 0..1 from left to right and top to bottom.
@@ -54,7 +87,9 @@ export interface Project {
   layers: Layer[]
 }
 
-export const PROJECT_VERSION = 1
+// 2: layers have a `type` ("drum" or "melody"). Version 1 files have only
+// drum layers and still load (a layer without a type is a drum layer).
+export const PROJECT_VERSION = 2
 
 // 16th-note grid steps in one bar (SPEC 2.3). 6/8 = 6 eighths = 12 sixteenths.
 export function getStepsPerBar(timeSignature: TimeSignature): number {
@@ -175,13 +210,14 @@ export function addTakeLayer(layer: Layer): void {
   addLayers([layer])
 }
 
-// A retake replaces one layer's hits, keeping its place in the list. Undoable.
-export function replaceLayerHits(layerId: string, hits: number[]): void {
+// A retake replaces one layer's content, keeping its place in the list.
+// The new layer must have the same id as the one it replaces. Undoable.
+export function replaceTakeLayer(newLayer: Layer): void {
   rememberLayersForUndo()
   const updated: Layer[] = []
   for (const layer of currentProject.layers) {
-    if (layer.id === layerId) {
-      updated.push({ ...layer, hits: hits })
+    if (layer.id === newLayer.id) {
+      updated.push(newLayer)
     } else {
       updated.push(layer)
     }

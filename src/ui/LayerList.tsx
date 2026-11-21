@@ -2,8 +2,10 @@
 // Keys 1-9 also toggle mute; that's handled in App.
 import { useSyncExternalStore } from 'react'
 import { getDrumLabel } from '../audio/drums.ts'
+import { getInstrumentLabel } from '../audio/instruments.ts'
 import { getRecorderState, recordTake, subscribeToRecorder } from '../audio/recorder.ts'
 import { addLayers, deleteLayer, getProject, toggleLayerMuted } from '../project/projectStore.ts'
+import type { Layer } from '../project/projectStore.ts'
 import { createTestLayers } from '../project/testLayers.ts'
 import { useProject } from './hooks.ts'
 
@@ -24,7 +26,7 @@ export function LayerList() {
       <ol>
         {layers.map((layer, index) => (
           <li key={layer.id}>
-            {getDrumLabel(layer.drum)} ({layer.hits.length} hits)
+            {getLayerLabel(layer)}
             {layer.muted ? ' [muted]' : ''}
             {recorder.retakeLayerId === layer.id ? ' [RETAKING]' : ''}{' '}
             <button onClick={() => toggleLayerMuted(layer.id)}>
@@ -42,4 +44,12 @@ export function LayerList() {
       </ol>
     </fieldset>
   )
+}
+
+// "Kick (8 hits)" or "Chord pad (6 notes)".
+function getLayerLabel(layer: Layer): string {
+  if (layer.type === 'drum') {
+    return `${getDrumLabel(layer.drum)} (${layer.hits.length} hits)`
+  }
+  return `${getInstrumentLabel(layer.instrument)} (${layer.notes.length} notes)`
 }
