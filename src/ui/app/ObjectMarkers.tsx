@@ -1,0 +1,296 @@
+// Object markers on the camera (SPEC 1.2, steps 21-24, design.md 5.17, 5.18)
+// while a drum card is active. Drag on the camera to draw a box around an
+// object; click a box to use it for the active card; × in a tag deletes it.
+//
+// Boxes are stored in camera-image coordinates (0-1, not mirrored). The image
+// is mirrored and cover-fitted (cropped), so every frame the markers are
+// placed with the same image fit the melody guide uses, and the "hand inside"
+// highlight (step 22) and tap ripples read the engine directly. React only
+// re-renders when the objects themselves change (SPEC 0.1).
+import { useEffect, useRef } from 'react'
+import type { PointerEvent } from 'react'
+import { getDrumLabel } from '../../audio/drums.ts'
+import { onLiveHit } from '../../audio/mic.ts'
+import { getProject } from '../../project/projectStore.ts'
+import type { Box, TrackedObject } from '../../project/projectStore.ts'
+import { getLatestHandFrame } from '../../vision/handTracking.ts'
+import type { HandPoint } from '../../vision/handTracking.ts'
+import { MIN_BOX_SIZE, findObjectAtPoint, isPointInBox, makeBoxFromCorners } from '../../vision/objects.ts'
+import { useProject } from '../hooks.ts'
+import cornerBl from './icons/corner-bl.svg'
+import cornerBr from './icons/corner-br.svg'
+import cornerTl from './icons/corner-tl.svg'
+import cornerTr from './icons/corner-tr.svg'
+import tapRipple from './icons/tap-ripple.svg'
+import { getImageFit } from './MelodyGuide.tsx'
+import type { ImageFit } from './MelodyGuide.tsx'
+
+// The tag sits 32px above the box (design.md 5.17). Closer to the top of the
+// camera than that, it would be cut off, so it moves below the box instead.
+const TAG_OFFSET = 32
+
+interface ObjectMarkersProps {
+  linkedObjectId: string | null // the object the active card's next take uses
+  editable: boolean // false while a take runs: no drawing, selecting or deleting
+  onDraw: (box: Box) => void
+  onSelect: (objectId: string | null) => void // null = clicked empty camera: mic only
+  onDelete: (objectId: string) => void
+}
+
+interface Rect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+export function ObjectMarkers(props: ObjectMarkersProps) {
+  const objects = useProject().objects
+  const layerRef = useRef<HTMLDivElement>(null)
+  const draftRef = useRef<HTMLDivElement>(null)
+  // The drag in progress, in camera-image coordinates. A ref, so moving the
+  // mouse doesn't re-render.
+  const dragRef = useRef<{ start: HandPoint; current: HandPoint } | null>(null)
+
+  // Every screen frame: place markers (the fit changes on resize or when the
+  // camera starts), light the ones with a hand inside, draw the drag preview.
+  useEffect(function () {
+    let frameId = 0
+    function draw() {
+      const layer = layerRef.current
+      if (layer) {
+        updateMarkers(layer)
+        updateDraft(layer, draftRef.current, dragRef.current)
+      }
+      frameId = requestAnimationFrame(draw)
+    }
+    frameId = requestAnimationFrame(draw)
+    return function () {
+      cancelAnimationFrame(frameId)
+    }
+  }, [])
+
+  // A tap ripple (design.md 5.18) on the hand, for each mic hit with a hand in a box.
+  useEffect(function () {
+    return onLiveHit(function () {
+      const layer = layerRef.current
+      if (layer) {
+        addRipplesForHit(layer)
+      }
+    })
+  }, [])
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!props.editable || event.button !== 0) {
+      return
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const point = toImagePoint(event)
+    dragRef.current = { start: point, current: point }
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (dragRef.current) {
+      dragRef.current.current = toImagePoint(event)
+    }
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current
+    dragRef.current = null
+    if (!drag || !props.editable) {
+      return
+    }
+    const box = makeBoxFromCorners(drag.start, toImagePoint(event))
+    if (box.width >= MIN_BOX_SIZE && box.height >= MIN_BOX_SIZE) {
+      props.onDraw(box)
+    } else {
+      // A click: use the box under the mouse, or none.
+      const clicked = findObjectAtPoint(getProject().objects, drag.start)
+      props.onSelect(clicked ? clicked.id : null)
+    }
+  }
+
+  let layerClass = 'object-layer'
+  if (props.editable) {
+    layerClass += ' is-editable'
+  }
+
+  return (
+    <div
+      className={layerClass}
+      ref={layerRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={() => {
+        dragRef.current = null
+      }}
+    >
+      {objects.map((object) => (
+        <ObjectMarker
+          key={object.id}
+          object={object}
+          linked={object.id === props.linkedObjectId}
+          editable={props.editable}
+          onDelete={() => props.onDelete(object.id)}
+        />
+      ))}
+      <div className="object-draft" ref={draftRef} />
+    </div>
+  )
+}
+
+function ObjectMarker(props: { object: TrackedObject; linked: boolean; editable: boolean; onDelete: () => void }) {
+  return (
+    // Placed by the frame loop (left/top/width/height), found by data-id.
+    <div className={'object-marker' + (props.linked ? ' is-linked' : '')} data-id={props.object.id}>
+      <img className="object-corner is-tl" src={cornerTl} alt="" />
+      <img className="object-corner is-tr" src={cornerTr} alt="" />
+      <img className="object-corner is-bl" src={cornerBl} alt="" />
+      <img className="object-corner is-br" src={cornerBr} alt="" />
+      <div className="object-tag text-label">
+        <span>Object · {getDrumLabel(props.object.drum)}</span>
+        {props.editable ? (
+          <button
+            className="object-tag-delete text-label"
+            type="button"
+            aria-label="Delete object"
+            title="Delete object"
+            // Not the start of a drag on the camera underneath.
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.currentTarget.blur() // so Space records instead of pressing this
+              props.onDelete()
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+// ---- Coordinates ----
+// Positions inside the layer are in layout pixels (clientWidth units), which
+// stay right under the page zoom (--ui-scale). Mouse positions are turned into
+// a fraction of the layer's on-screen rect first, so the zoom cancels out.
+
+function getLayerFit(layer: HTMLElement): ImageFit {
+  return getImageFit(layer.clientWidth, layer.clientHeight)
+}
+
+function toImagePoint(event: PointerEvent<HTMLDivElement>): HandPoint {
+  const layer = event.currentTarget
+  const rect = layer.getBoundingClientRect()
+  const layoutX = ((event.clientX - rect.left) / rect.width) * layer.clientWidth
+  const layoutY = ((event.clientY - rect.top) / rect.height) * layer.clientHeight
+  const fit = getLayerFit(layer)
+  // Mirrored: screen left is the camera image's right.
+  return { x: 1 - (layoutX - fit.offsetX) / fit.width, y: (layoutY - fit.offsetY) / fit.height }
+}
+
+function boxToLayout(box: Box, fit: ImageFit): Rect {
+  return {
+    left: fit.offsetX + (1 - box.x - box.width) * fit.width,
+    top: fit.offsetY + box.y * fit.height,
+    width: box.width * fit.width,
+    height: box.height * fit.height,
+  }
+}
+
+function pointToLayout(point: HandPoint, fit: ImageFit): { x: number; y: number } {
+  return { x: fit.offsetX + (1 - point.x) * fit.width, y: fit.offsetY + point.y * fit.height }
+}
+
+function placeElement(element: HTMLElement, rect: Rect) {
+  element.style.left = rect.left + 'px'
+  element.style.top = rect.top + 'px'
+  element.style.width = rect.width + 'px'
+  element.style.height = rect.height + 'px'
+}
+
+// ---- Per-frame DOM updates ----
+
+function updateMarkers(layer: HTMLDivElement) {
+  const fit = getLayerFit(layer)
+  const frame = getLatestHandFrame()
+  const objects = getProject().objects
+  const markers = layer.querySelectorAll<HTMLElement>('.object-marker')
+  for (const marker of markers) {
+    const object = findById(objects, marker.dataset.id || '')
+    if (object === null) {
+      continue
+    }
+    const rect = boxToLayout(object.box, fit)
+    placeElement(marker, rect)
+    marker.classList.toggle('is-tag-below', rect.top < TAG_OFFSET)
+    marker.classList.toggle('is-hand-inside', getHandPointsInBox(frame.hands, object.box).length > 0)
+  }
+}
+
+function updateDraft(layer: HTMLDivElement, draft: HTMLDivElement | null, drag: { start: HandPoint; current: HandPoint } | null) {
+  if (draft === null) {
+    return
+  }
+  if (drag === null) {
+    draft.style.display = 'none'
+    return
+  }
+  // Same clipping as the box that will be saved.
+  const box = makeBoxFromCorners(drag.start, drag.current)
+  placeElement(draft, boxToLayout(box, getLayerFit(layer)))
+  draft.style.display = 'block'
+}
+
+// One ripple per box with a hand inside, centred on the hand points in it.
+function addRipplesForHit(layer: HTMLDivElement) {
+  const fit = getLayerFit(layer)
+  const hands = getLatestHandFrame().hands
+  for (const object of getProject().objects) {
+    const inside = getHandPointsInBox(hands, object.box)
+    if (inside.length === 0) {
+      continue
+    }
+    let sumX = 0
+    let sumY = 0
+    for (const point of inside) {
+      sumX += point.x
+      sumY += point.y
+    }
+    const center = pointToLayout({ x: sumX / inside.length, y: sumY / inside.length }, fit)
+
+    const ripple = document.createElement('img')
+    ripple.src = tapRipple
+    ripple.alt = ''
+    ripple.className = 'tap-ripple object-ripple'
+    ripple.style.left = center.x + 'px'
+    ripple.style.top = center.y + 'px'
+    ripple.addEventListener('animationend', function () {
+      ripple.remove()
+    })
+    layer.appendChild(ripple)
+  }
+}
+
+function getHandPointsInBox(hands: HandPoint[][], box: Box): HandPoint[] {
+  const inside: HandPoint[] = []
+  for (const hand of hands) {
+    for (const point of hand) {
+      if (isPointInBox(point, box)) {
+        inside.push(point)
+      }
+    }
+  }
+  return inside
+}
+
+function findById(objects: TrackedObject[], id: string): TrackedObject | null {
+  for (const object of objects) {
+    if (object.id === id) {
+      return object
+    }
+  }
+  return null
+}
