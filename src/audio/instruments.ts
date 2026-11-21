@@ -51,14 +51,17 @@ export function moveByWhiteKeys(pitch: string, whiteKeySteps: number): string {
 // The notes an instrument actually plays for one gesture pitch (SPEC 3.5):
 // - Bass and 808: the note 2 octaves below.
 // - Chord pad: the white-key triad built on the note (root, 3rd, 5th),
-//   e.g. C -> C E G, A -> A C E, B -> B D F.
+//   e.g. C -> C E G, A -> A C E, B -> B D F. Voiced open (fuller, like
+//   produced synth chords) instead of squashed into one octave:
+//   root an octave down, root, 5th, and the 3rd an octave up.
+//   Still only the triad's three notes (SPEC 3.5), just spread out.
 // - Everything else: the note itself.
 export function getNotesToPlay(instrument: InstrumentName, pitch: string): string[] {
   if (instrument === 'bass' || instrument === 'bass808') {
     return [moveByWhiteKeys(pitch, -14)]
   }
   if (instrument === 'chordPad') {
-    return [pitch, moveByWhiteKeys(pitch, 2), moveByWhiteKeys(pitch, 4)]
+    return [moveByWhiteKeys(pitch, -7), pitch, moveByWhiteKeys(pitch, 4), moveByWhiteKeys(pitch, 9)]
   }
   return [pitch]
 }
