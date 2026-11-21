@@ -5,6 +5,7 @@ import { play, stop } from '../audio/clock.ts'
 import { getProject, toggleLayerMutedByIndex, updateSettings } from '../project/projectStore.ts'
 import { BeatDisplay } from './BeatDisplay.tsx'
 import { LayerList } from './LayerList.tsx'
+import { MicPanel } from './MicPanel.tsx'
 import { SampleButtons } from './SampleButtons.tsx'
 import { SetupControls } from './SetupControls.tsx'
 import { useIsPlaying } from './hooks.ts'
@@ -69,6 +70,7 @@ export default function App() {
       </p>
       <BeatDisplay />
       <LayerList />
+      <MicPanel />
       <SampleButtons />
       <SetupControls />
     </div>
