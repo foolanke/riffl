@@ -1016,3 +1016,166 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ---- Settings section (SettingsSection.tsx) ----
+   Not in the design yet (design.md 10, Q7). Built from the layer card (5.9),
+   the metronome strip (5.4), the BPM chip, the toggle switch and outline
+   buttons (5.5 / 5.6). No new colours. */
+
+/* The card may shrink when the sidebar is full; its body then scrolls. */
+.layer-card.settings {
+  flex-shrink: 1;
+  min-height: 58px; /* the collapsed card: header always visible */
+  overflow: hidden;
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+/* LABEL ---- control: the metronome strip's row without its border. */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  min-height: 28px; /* the BPM chip's height */
+}
+
+.settings-divider {
+  flex-shrink: 0;
+  height: 1px;
+  background: var(--color-line);
+}
+
+.settings-value {
+  flex-shrink: 0;
+  min-width: 24px;
+  text-align: right;
+}
+
+/* Disabled while a take runs (design.md 8: disabled text in --color-line). */
+.bpm-chip.is-disabled select {
+  color: var(--color-line);
+  cursor: default;
+}
+
+.bpm-chip.is-disabled img {
+  opacity: 0.4;
+}
+
+/* Range slider (no design): 1px --color-line track, small white thumb. */
+.settings-range {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.settings-range::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--color-line);
+}
+
+.settings-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -4.5px; /* centre the 10px thumb on the 1px track */
+  border: none;
+  border-radius: 50%;
+  background: var(--color-fg);
+}
+
+.settings-range::-moz-range-track {
+  height: 1px;
+  background: var(--color-line);
+}
+
+.settings-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-fg);
+}
+
+/* Mic level meter: white fill on a --color-line track, with a marker at the
+   hit threshold that sticks out above and below the bar. */
+.mic-meter {
+  position: relative;
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--color-line);
+}
+
+.mic-meter-fill {
+  width: 0;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--color-fg);
+}
+
+.mic-meter-threshold {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  width: 1px;
+  height: 12px;
+  background: var(--color-fg-muted);
+}
+
+/* Live hit flash: an empty dot (like Step dot off) that fills white per hit. */
+.mic-hit-dot {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--color-line);
+  border-radius: 50%;
+}
+
+.mic-hit-dot.is-hit {
+  border-color: var(--color-fg);
+  background: var(--color-fg);
+}
+
+/* Full-width outline buttons (ENABLE MIC, LOAD, NEW PROJECT). */
+.settings-button {
+  justify-content: center;
+  width: 100%;
+}
+
+.settings-button:disabled,
+.settings-button:disabled:hover {
+  border-color: var(--color-surface);
+  background: var(--color-surface);
+  color: var(--color-line);
+  cursor: default;
+  opacity: 1;
+}
+
+.settings-button:disabled img {
+  opacity: 0.4;
+}
+
+.settings-file-input {
+  display: none;
+}
+
+.settings-note {
+  margin: 0;
+  white-space: normal;
+}

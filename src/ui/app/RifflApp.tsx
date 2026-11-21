@@ -34,6 +34,7 @@ import { LayersPanel } from './LayersPanel.tsx'
 import { buildLayerItems, findItem, getItemSound, isMelodyItem } from './layerItems.ts'
 import type { DraftLayer, LayerItem, LayerSound } from './layerItems.ts'
 import { MetronomeStrip } from './MetronomeStrip.tsx'
+import { SettingsSection } from './SettingsSection.tsx'
 import { StartOverlay } from './StartOverlay.tsx'
 
 const SETUP_HINT = 'Point the camera at an object, then press record'
@@ -271,6 +272,8 @@ export function RifflApp() {
         ) : null}
 
         <div className="sidebar-spacer" />
+
+        <SettingsSection />
 
         <CalibrationSection cameraOk={cameraOk} />
 
