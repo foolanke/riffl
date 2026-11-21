@@ -23,3 +23,12 @@ Licenses:
   (source: http://www.flstudiomusic.com/2016/09/download-free-909-kits-stems-f9-audio.html).
   The oramics page does not name an exact license. Confirm before any public/commercial release.
 - **LinnDrum LM-2:** marked Public Domain (source: http://machines.hyperreal.org/manufacturers/Linn/LinnDrum/).
+
+## Extras for hip-hop/trap (added at the team's request, not in SPEC 1.7)
+
+| File | Drum | Original file | Kit |
+|---|---|---|---|
+| 808.wav | 808 | DM/TR-808/samples/01.BD.808.wav | Roland TR-808 |
+
+The Hi-hat roll reuses hihat-closed.wav.
+The oramics page does not name an exact license for the TR-808 set either. Confirm before any public/commercial release.

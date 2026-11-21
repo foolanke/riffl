@@ -1,4 +1,9 @@
-// The 8 drum sounds (SPEC 1.7) and their sample files in public/samples/.
+// The 8 drum sounds (SPEC 1.7) and their sample files in public/samples/,
+// plus two extras for hip-hop/trap beats, added at the team's request:
+// - 808: a deep, long TR-808 kick with heavy reverb (see samples.ts).
+// - Hi-hat roll: each hit plays two closed hats a 32nd apart, so tapping
+//   a run of 16ths gives a trap-style 32nd roll while hits still snap to
+//   the 16th grid (SPEC 2.3).
 // No Tone.js here, so project data can use these types too.
 
 export type DrumName =
@@ -10,6 +15,8 @@ export type DrumName =
   | 'crash'
   | 'tom'
   | 'shaker'
+  | 'bass808'
+  | 'hihatRoll'
 
 export interface DrumInfo {
   name: DrumName
@@ -26,6 +33,8 @@ export const DRUMS: DrumInfo[] = [
   { name: 'crash', label: 'Crash', file: 'crash.wav' },
   { name: 'tom', label: 'Tom', file: 'tom.wav' },
   { name: 'shaker', label: 'Shaker', file: 'shaker.wav' },
+  { name: 'bass808', label: '808', file: '808.wav' },
+  { name: 'hihatRoll', label: 'Hi-hat roll', file: 'hihat-closed.wav' },
 ]
 
 export function getDrumLabel(name: DrumName): string {
