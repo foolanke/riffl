@@ -248,27 +248,45 @@
   border-radius: var(--radius);
 }
 
-/* Timer icon doubles as the metronome on/off switch (M key does the same). */
-.metronome-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
+/* On/off switch (not in the design; built from its tokens).
+   Off: outlined track, grey knob left. On: white track, black knob right. */
+.toggle-switch {
+  position: relative;
   flex-shrink: 0;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
 }
 
-.metronome-toggle img {
-  display: block;
-  width: 20px;
-  height: 20px;
+.toggle-switch:hover {
+  border-color: var(--color-fg-muted);
 }
 
-.metronome-strip.is-off .metronome-toggle img,
+.toggle-switch-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-fg-muted);
+  transition: left 120ms ease-out;
+}
+
+.toggle-switch.is-on {
+  border-color: var(--color-fg);
+  background: var(--color-fg);
+}
+
+.toggle-switch.is-on .toggle-switch-knob {
+  left: 17px;
+  background: var(--color-bg);
+}
+
 .metronome-strip.is-off .metronome-name {
   opacity: 0.4;
 }
@@ -770,6 +788,147 @@
 .step.is-on::after {
   border: none;
   background: var(--color-fg-muted);
+}
+
+/* ---- 5.14 Score track (melody layers), one slot per 16th ---- */
+
+.score-staff {
+  position: relative;
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 88px;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Five staff lines at y 28, 36, 44, 52, 60 (F5 D5 B4 G4 E4). */
+.score-lines {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28px;
+  height: 33px;
+  background: repeating-linear-gradient(to bottom, var(--color-line) 0 1px, transparent 1px 8px);
+  pointer-events: none;
+}
+
+.score-time-signature {
+  position: relative;
+  width: 36px;
+  height: 88px;
+  flex-shrink: 0;
+}
+
+/* Barline at the start of the staff. */
+.score-time-signature::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 28px;
+  width: 1px;
+  height: 33px;
+  background: var(--color-line);
+}
+
+.score-digit {
+  position: absolute;
+  left: 15px;
+  line-height: 20px;
+}
+
+.score-slots {
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 88px;
+  display: flex;
+}
+
+.score-slot {
+  position: relative;
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 88px;
+}
+
+/* Barline between bars of a multi-bar loop. */
+.score-slot.starts-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 28px;
+  width: 1px;
+  height: 33px;
+  background: var(--color-line);
+}
+
+.score-count {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--color-line);
+}
+
+.score-count.has-note {
+  color: var(--color-fg);
+}
+
+.score-head {
+  position: absolute;
+  left: 50%;
+  width: 11px;
+  height: 8px;
+  transform: translateX(-50%);
+}
+
+.score-stem {
+  position: absolute;
+  width: 1.5px;
+  height: 26px;
+  background: var(--color-fg);
+  transform: translateX(-50%);
+}
+
+.score-stem.is-up {
+  left: calc(50% + 4.75px);
+}
+
+.score-stem.is-down {
+  left: calc(50% - 5px);
+}
+
+.score-name {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Final double barline: 1px at x 0 and 3px at x 3, 33 tall from y 28. */
+.score-end {
+  position: relative;
+  width: 6px;
+  height: 88px;
+  flex-shrink: 0;
+}
+
+.score-end::before,
+.score-end::after {
+  content: '';
+  position: absolute;
+  top: 28px;
+  height: 33px;
+  background: var(--color-fg);
+}
+
+.score-end::before {
+  left: 0;
+  width: 1px;
+}
+
+.score-end::after {
+  left: 3px;
+  width: 3px;
 }
 
 /* ---- Calibration (not in the design yet: built from 5.4 and the BPM chip) ---- */

@@ -1,11 +1,12 @@
 // The bottom Layers panel (design.md 4.1): LAYERS title + ADD LAYER, then
 // the empty-state text, or one track row per recorded layer.
 //
-// Track rows are provisional until the State 1 build: one dot per 16th step
-// of the loop, filled where the layer plays (design.md 10, Q3 is still open).
+// Drum rows: one dot per 16th step of the loop, filled where the layer plays
+// (SPEC 1.5 snaps to 16ths). Melody rows: a score staff (ScoreTrack.tsx).
 // Newest layer first, as in the design.
 import { useProject } from '../hooks.ts'
 import { ICONS } from './icons.ts'
+import { ScoreStaff } from './ScoreTrack.tsx'
 import { getStepMap, getStepsInLoop } from './layerItems.ts'
 import type { LayerItem } from './layerItems.ts'
 
@@ -50,19 +51,30 @@ export function LayersPanel(props: LayersPanelProps) {
       ) : (
         <div className="tracks">
           {recordedNewestFirst.map((item) => {
-            const stepMap = getStepMap(item.layer, stepsInLoop)
+            const layer = item.layer
+            let className = 'track-row'
+            if (layer && layer.type === 'melody') {
+              className += ' is-score'
+            }
+            if (item.muted) {
+              className += ' is-muted'
+            }
             return (
-              <div key={item.key} className={'track-row' + (item.muted ? ' is-muted' : '')}>
+              <div key={item.key} className={className}>
                 <div className="track-label">
                   <span className="text-label color-muted">Layer {item.number}</span>
                   <span className="text-item">{item.soundLabel}</span>
                 </div>
                 <div className="tick" />
-                <div className="track-steps">
-                  {stepMap.map((isOn, step) => (
-                    <div key={step} className={'step' + (isOn ? ' is-on' : '')} />
-                  ))}
-                </div>
+                {layer && layer.type === 'melody' ? (
+                  <ScoreStaff layer={layer} settings={settings} />
+                ) : (
+                  <div className="track-steps">
+                    {getStepMap(layer, stepsInLoop).map((isOn, step) => (
+                      <div key={step} className={'step' + (isOn ? ' is-on' : '')} />
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}

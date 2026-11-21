@@ -1,6 +1,7 @@
-// Metronome strip (design.md 5.4): timer icon, METRONOME, rule, BPM chip, BPM.
-// The BPM chip sets the tempo (SPEC 2.1, 60-180). The timer icon switches the
-// metronome on and off, like the M key (SPEC 2.2, 0.6).
+// Metronome strip (design.md 5.4): on/off switch, METRONOME, rule, BPM chip, BPM.
+// The BPM chip sets the tempo (SPEC 2.1, 60-180). The switch turns the
+// metronome on and off, like the M key (SPEC 2.2, 0.6). It takes the timer
+// icon's place: the strip has no spare width for both (human's request).
 import { MAX_TEMPO_BPM, MIN_TEMPO_BPM, updateSettings } from '../../project/projectStore.ts'
 import { useProject } from '../hooks.ts'
 import { ICONS } from './icons.ts'
@@ -21,16 +22,18 @@ export function MetronomeStrip() {
   return (
     <div className={'metronome-strip' + (settings.metronomeOn ? '' : ' is-off')}>
       <button
-        className="metronome-toggle"
+        className={'toggle-switch' + (settings.metronomeOn ? ' is-on' : '')}
         type="button"
-        aria-label={settings.metronomeOn ? 'Turn metronome off (M)' : 'Turn metronome on (M)'}
-        aria-pressed={settings.metronomeOn}
+        role="switch"
+        aria-checked={settings.metronomeOn}
+        aria-label="Metronome (M)"
+        title="Metronome on/off (M)"
         onClick={(event) => {
           updateSettings({ metronomeOn: !settings.metronomeOn })
           event.currentTarget.blur() // so Space records instead of pressing this
         }}
       >
-        <img src={ICONS.timer} alt="" />
+        <span className="toggle-switch-knob" />
       </button>
       <span className="metronome-name text-label">Metronome</span>
       <div className="metronome-rule" />
