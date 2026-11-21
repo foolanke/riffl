@@ -5,6 +5,7 @@ import * as Tone from 'tone'
 import { initClock } from './clock.ts'
 import { initLayerPlayer } from './layerPlayer.ts'
 import { initLiveMelody } from './liveMelody.ts'
+import { loadMelodyInstruments } from './melodySynths.ts'
 import { loadSamples } from './samples.ts'
 
 // Browsers keep audio locked until the user clicks something.
@@ -12,6 +13,7 @@ import { loadSamples } from './samples.ts'
 export async function startAudio(): Promise<void> {
   await Tone.start()
   await loadSamples()
+  await loadMelodyInstruments()
   initClock()
   initLayerPlayer()
   initLiveMelody()

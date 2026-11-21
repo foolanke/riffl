@@ -32,3 +32,11 @@ Licenses:
 
 The Hi-hat roll reuses hihat-closed.wav.
 The oramics page does not name an exact license for the TR-808 set either. Confirm before any public/commercial release.
+
+## Piano (melody instrument, SPEC 3.5)
+
+`piano/*.mp3`: Salamander Grand Piano by Alexander Holm, CC-BY 3.0
+(https://archive.org/details/SalamanderGrandPianoV3), downloaded once from the
+Tone.js-hosted copy (https://tonejs.github.io/audio/salamander/). Every 3 semitones
+from A3 to C7; Tone.Sampler fills in the notes between. CC-BY needs credit to the
+author in any public release.
