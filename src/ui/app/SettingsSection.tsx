@@ -2,10 +2,12 @@
 // designed page has no place for yet (design.md 10, Q7). Tempo and metronome
 // on/off stay in the metronome strip.
 //
-// Not designed, so it is built from existing parts: a collapsible card like a
-// collapsed layer card (5.9), compact rows like the metronome strip (5.4)
-// with BPM-chip selects, the toggle switch, and outline buttons (5.5, 5.6).
-// Collapsed by default so the sidebar doesn't overflow.
+// Not designed, so it is built from existing parts. The sidebar shows a
+// SETTINGS row like a collapsed layer card (5.9); clicking it opens an
+// overlay over the middle 75% of the screen (human's request), with the
+// settings in columns: compact rows like the metronome strip (5.4) with
+// BPM-chip selects, the toggle switch, and outline buttons (5.5, 5.6).
+// Esc, CLOSE or a click outside the panel closes it.
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { amplitudeToDecibels } from '../../audio/hitDetection.ts'
@@ -46,24 +48,70 @@ const NEW_PROJECT_CONFIRM_MS = 3000 // the "sure?" state resets after this
 export function SettingsSection() {
   const [open, setOpen] = useState(false)
 
-  return (
-    <div className={'layer-card settings' + (open ? '' : ' is-collapsed')}>
-      <button
-        className="layer-card-header"
-        type="button"
-        aria-expanded={open}
-        onClick={(event) => {
-          setOpen(!open)
-          event.currentTarget.blur() // so Space records instead of pressing this
-        }}
-      >
-        <span className="text-item">Settings</span>
-        <span className="layer-card-spacer" />
-        <img src={open ? ICONS.chevronDown : ICONS.chevronRight} alt="" />
-      </button>
+  // Esc closes the overlay.
+  useEffect(
+    function () {
+      if (!open) {
+        return
+      }
+      function handleKeyDown(event: KeyboardEvent) {
+        if (event.key === 'Escape') {
+          setOpen(false)
+        }
+      }
+      window.addEventListener('keydown', handleKeyDown)
+      return function () {
+        window.removeEventListener('keydown', handleKeyDown)
+      }
+    },
+    [open],
+  )
 
-      {open ? <SettingsBody /> : null}
-    </div>
+  return (
+    <>
+      <div className="layer-card settings is-collapsed">
+        <button
+          className="layer-card-header"
+          type="button"
+          aria-haspopup="dialog"
+          onClick={(event) => {
+            setOpen(true)
+            event.currentTarget.blur() // so Space records instead of pressing this
+          }}
+        >
+          <span className="text-item">Settings</span>
+          <span className="layer-card-spacer" />
+          <img src={ICONS.chevronRight} alt="" />
+        </button>
+      </div>
+
+      {open ? (
+        <div
+          className="settings-backdrop"
+          onPointerDown={(event) => {
+            // Only a click on the dimmed area itself, not inside the panel.
+            if (event.target === event.currentTarget) {
+              setOpen(false)
+            }
+          }}
+        >
+          <div className="settings-panel" role="dialog" aria-label="Settings">
+            <div className="settings-panel-header">
+              <span className="text-title">Settings</span>
+              <div className="layers-header-spacer" />
+              <button
+                className="button-outline text-item"
+                type="button"
+                onClick={() => setOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <SettingsBody />
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
@@ -76,6 +124,8 @@ function SettingsBody() {
   return (
     <div className="settings-body">
       {/* Project setup (SPEC 2.1). Changing these mid-take would break the take. */}
+      <div className="settings-group">
+      <div className="section-title text-label">Project</div>
       <SettingsRow label="Time signature">
         <ChipSelect
           label="Time signature"
@@ -103,10 +153,11 @@ function SettingsBody() {
           onChange={(value) => updateSettings({ key: value })}
         />
       </SettingsRow>
-
-      <div className="settings-divider" />
+      </div>
 
       {/* Recording options (SPEC 2.2, step 16). */}
+      <div className="settings-group">
+      <div className="section-title text-label">Recording</div>
       <SettingsRow label="Count-in">
         <ChipSelect
           label="Count-in"
@@ -157,14 +208,17 @@ function SettingsBody() {
           <span className="toggle-switch-knob" />
         </button>
       </SettingsRow>
+      </div>
 
-      <div className="settings-divider" />
+      <div className="settings-group">
+        <div className="section-title text-label">Mic</div>
+        <MicSettings />
+      </div>
 
-      <MicSettings />
-
-      <div className="settings-divider" />
-
-      <ProjectFileSettings disabled={takeRunning} />
+      <div className="settings-group">
+        <div className="section-title text-label">Project file</div>
+        <ProjectFileSettings disabled={takeRunning} />
+      </div>
     </div>
   )
 }

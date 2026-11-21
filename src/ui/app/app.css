@@ -1076,20 +1076,67 @@
    buttons (5.5 / 5.6). No new colours. */
 
 /* The card may shrink when the sidebar is full; its body then scrolls. */
+/* The sidebar entry: a collapsed card that opens the overlay. */
 .layer-card.settings {
-  flex-shrink: 1;
-  min-height: 58px; /* the collapsed card: header always visible */
+  flex-shrink: 0;
+}
+
+/* Overlay over the whole page, panel over the middle 75% (human's request). */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-overlay);
+}
+
+.settings-panel {
+  width: 75%;
+  height: 75%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  background: var(--color-bg);
   overflow: hidden;
 }
 
+/* SETTINGS title + CLOSE, like the layers panel header (4.1). */
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Groups side by side in columns; scrolls if the screen is short. */
 .settings-body {
+  flex: 1 0 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  align-content: start;
+  gap: 32px 16px;
+  overflow-y: auto;
+}
+
+/* One group: section title (5.2), then its rows, in a bordered box. */
+.settings-group {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  min-height: 0;
-  padding: 8px;
-  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+.settings-group .section-title {
+  padding: 0 0 8px;
 }
 
 /* LABEL ---- control: the metronome strip's row without its border. */
