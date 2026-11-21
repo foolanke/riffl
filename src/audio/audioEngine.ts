@@ -4,6 +4,7 @@
 import * as Tone from 'tone'
 import { initClock } from './clock.ts'
 import { initLayerPlayer } from './layerPlayer.ts'
+import { initLiveMelody } from './liveMelody.ts'
 import { loadSamples } from './samples.ts'
 
 // Browsers keep audio locked until the user clicks something.
@@ -13,6 +14,7 @@ export async function startAudio(): Promise<void> {
   await loadSamples()
   initClock()
   initLayerPlayer()
+  initLiveMelody()
   console.log('Audio started, sample rate:', Tone.getContext().sampleRate)
 }
 
