@@ -5,6 +5,7 @@ import { play, stop } from '../audio/clock.ts'
 import { getProject, toggleLayerMutedByIndex, updateSettings } from '../project/projectStore.ts'
 import { BeatDisplay } from './BeatDisplay.tsx'
 import { LayerList } from './LayerList.tsx'
+import { LagCheckPanel } from './LagCheckPanel.tsx'
 import { MicPanel } from './MicPanel.tsx'
 import { RecordPanel } from './RecordPanel.tsx'
 import { recordTake } from '../audio/recorder.ts'
@@ -90,6 +91,7 @@ export default function App() {
       <RecordPanel />
       <LayerList />
       <MicPanel />
+      <LagCheckPanel />
       <SampleButtons />
       <SetupControls />
     </div>
