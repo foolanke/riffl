@@ -17,15 +17,20 @@ export interface HandPoint {
   y: number
 }
 
+// The user's real left or right hand.
+export type HandSide = 'left' | 'right'
+
 // One tracking result. Each hand is a list of 21 points (wrist, finger joints, tips).
+// sides[i] says which of the user's hands hands[i] is (melody, SPEC 3.3).
 export interface HandFrame {
   time: number // performance.now() in ms when the camera captured the frame
   hands: HandPoint[][]
+  sides: HandSide[]
 }
 
 let landmarker: HandLandmarker | null = null
 let trackingStarted = false
-let latestFrame: HandFrame = { time: 0, hands: [] }
+let latestFrame: HandFrame = { time: 0, hands: [], sides: [] }
 
 // Frames saved during a take for camera confirmation (step 23).
 let recordedFrames: HandFrame[] = []
@@ -87,10 +92,11 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
       }
       hands.push(points)
     }
+    const sides = getHandSides(result.handedness, hands)
     // When the camera took the picture, if the browser knows. This matters
     // for matching hands to mic hits: the frame reaches us tens of ms later.
     const captureTime = metadata.captureTime !== undefined ? metadata.captureTime : now
-    latestFrame = { time: captureTime, hands: hands }
+    latestFrame = { time: captureTime, hands: hands, sides: sides }
     if (isRecordingFrames) {
       recordedFrames.push(latestFrame)
     }
@@ -99,6 +105,27 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
   video.requestVideoFrameCallback(function (nextNow, nextMetadata) {
     handleVideoFrame(video, nextNow, nextMetadata)
   })
+}
+
+// MediaPipe labels hands as if the image were mirrored (a selfie camera).
+// We give it the camera image unmirrored, so its labels are swapped:
+// its "Left" is the user's right hand.
+// If both hands get the same label (it happens when hands cross or blur),
+// fall back to position: the hand further left on the mirrored screen is
+// the left hand. On the mirrored screen, left = larger camera x.
+function getHandSides(handedness: { categoryName: string }[][], hands: HandPoint[][]): HandSide[] {
+  const sides: HandSide[] = []
+  for (let i = 0; i < hands.length; i++) {
+    const categories = handedness[i]
+    const label = categories && categories.length > 0 ? categories[0].categoryName : ''
+    sides.push(label === 'Left' ? 'right' : 'left')
+  }
+  if (hands.length === 2 && sides[0] === sides[1]) {
+    const firstIsMoreLeftOnScreen = hands[0][0].x > hands[1][0].x
+    sides[0] = firstIsMoreLeftOnScreen ? 'left' : 'right'
+    sides[1] = firstIsMoreLeftOnScreen ? 'right' : 'left'
+  }
+  return sides
 }
 
 function countFrame(now: number): void {

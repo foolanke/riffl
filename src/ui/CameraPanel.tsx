@@ -4,6 +4,9 @@
 // Object boxes (step 21): pick a drum, then drag a box around the object
 // on the video. Click a box to choose it for the next take (step 24).
 // A box lights up while a hand is inside it (step 22).
+//
+// Melody guide (step 25, SPEC 3.2, 3.3, 3.9): the 3 note columns, and the
+// note name on each fingertip for the column that hand is in.
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { PointerEvent } from 'react'
 import { DRUMS, getDrumLabel } from '../audio/drums.ts'
@@ -13,7 +16,8 @@ import { addObject, deleteObject, getProject, setObjectDrum } from '../project/p
 import type { Box } from '../project/projectStore.ts'
 import { startCamera } from '../vision/camera.ts'
 import { getLatestHandFrame, getTrackingFps, startHandTracking } from '../vision/handTracking.ts'
-import type { HandPoint } from '../vision/handTracking.ts'
+import type { HandFrame, HandPoint } from '../vision/handTracking.ts'
+import { COLUMN_COUNT, getColumnRangeLabel, getGuideHands } from '../vision/melodyGuide.ts'
 import { MIN_BOX_SIZE, findObjectAtPoint, isHandInBox, makeBoxFromCorners } from '../vision/objects.ts'
 import { useProject } from './hooks.ts'
 
@@ -24,6 +28,10 @@ export function CameraPanel() {
   const [status, setStatus] = useState('Camera off.')
   const [cameraOn, setCameraOn] = useState(false)
   const [newObjectDrum, setNewObjectDrum] = useState<DrumName>('kick')
+  const [showMelodyGuide, setShowMelodyGuide] = useState(true)
+  // The draw loop reads this ref, so toggling doesn't restart the loop.
+  const showMelodyGuideRef = useRef(true)
+  showMelodyGuideRef.current = showMelodyGuide
   const objects = useProject().objects
   const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
   const videoHolderRef = useRef<HTMLDivElement>(null)
@@ -127,7 +135,7 @@ export function CameraPanel() {
         const canvas = canvasRef.current
         const context = canvas ? canvas.getContext('2d') : null
         if (canvas && context) {
-          drawOverlay(context, canvas.width, canvas.height, dragRef.current)
+          drawOverlay(context, canvas.width, canvas.height, dragRef.current, showMelodyGuideRef.current)
         }
         if (fpsRef.current) {
           fpsRef.current.textContent = String(getTrackingFps())
@@ -170,6 +178,19 @@ export function CameraPanel() {
           </select>
         </label>{' '}
         then drag a box around the object on the video. Click a box to use it for the next take.
+      </p>
+      <p>
+        <label>
+          <input
+            type="checkbox"
+            checked={showMelodyGuide}
+            onChange={(event) => {
+              setShowMelodyGuide(event.target.checked)
+              event.target.blur()
+            }}
+          />{' '}
+          Show melody guide (note columns and fingertip notes)
+        </label>
       </p>
       <div
         style={{
@@ -236,9 +257,14 @@ function drawOverlay(
   width: number,
   height: number,
   drag: { start: HandPoint; current: HandPoint } | null,
+  showMelodyGuide: boolean,
 ) {
   context.clearRect(0, 0, width, height)
   const frame = getLatestHandFrame()
+
+  if (showMelodyGuide) {
+    drawMelodyGuide(context, width, height, frame)
+  }
   const selectedId = getRecorderState().takeObjectId
 
   for (const object of getProject().objects) {
@@ -283,6 +309,50 @@ function drawOverlay(
       context.fill()
     }
   }
+}
+
+// Column borders and ranges, then each hand's side and fingertip notes.
+// Drawn under the hand dots so the dots stay visible.
+function drawMelodyGuide(context: CanvasRenderingContext2D, width: number, height: number, frame: HandFrame) {
+  const columnWidth = width / COLUMN_COUNT
+
+  context.strokeStyle = 'rgba(255, 255, 255, 0.6)'
+  context.lineWidth = 2
+  for (let column = 1; column < COLUMN_COUNT; column++) {
+    context.beginPath()
+    context.moveTo(column * columnWidth, 0)
+    context.lineTo(column * columnWidth, height)
+    context.stroke()
+  }
+
+  context.font = 'bold 16px sans-serif'
+  context.textAlign = 'center'
+  for (let column = 0; column < COLUMN_COUNT; column++) {
+    drawLabel(context, getColumnRangeLabel(column), (column + 0.5) * columnWidth, height - 14, 'white')
+  }
+
+  for (const hand of getGuideHands(frame)) {
+    // Which hand the app thinks this is, so a mix-up is easy to spot.
+    context.font = 'bold 14px sans-serif'
+    const sideText = hand.side === 'left' ? 'LEFT hand' : 'RIGHT hand'
+    drawLabel(context, sideText, (1 - hand.palm.x) * width, hand.palm.y * height, 'cyan')
+
+    context.font = 'bold 15px sans-serif'
+    for (const finger of hand.fingers) {
+      // Just above the fingertip, so the label doesn't cover the finger.
+      drawLabel(context, finger.pitch, (1 - finger.tip.x) * width, finger.tip.y * height - 18, 'yellow')
+    }
+  }
+  context.textAlign = 'left'
+}
+
+// Centered text on a dark background so it reads over any video.
+function drawLabel(context: CanvasRenderingContext2D, text: string, centerX: number, centerY: number, color: string) {
+  const textWidth = context.measureText(text).width
+  context.fillStyle = 'rgba(0, 0, 0, 0.7)'
+  context.fillRect(centerX - textWidth / 2 - 4, centerY - 11, textWidth + 8, 20)
+  context.fillStyle = color
+  context.fillText(text, centerX, centerY + 5)
 }
 
 // A box in camera coordinates as a rectangle on the mirrored screen.
