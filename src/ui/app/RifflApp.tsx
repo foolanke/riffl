@@ -14,6 +14,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { selectInstrument, setLiveMelodyOn } from '../../audio/liveMelody.ts'
 import { getRecorderState, recordTake, setTakeDrum, setTakeKind, subscribeToRecorder } from '../../audio/recorder.ts'
 import {
+  deleteLayer,
   getProject,
   setLayerDrum,
   setLayerInstrument,
@@ -151,6 +152,20 @@ export function RifflApp() {
     }
   }
 
+  // Delete a card (SPEC 1.6): a recorded layer leaves the project, a draft
+  // just leaves the page. Never during a take.
+  function handleDelete(item: LayerItem) {
+    if (getRecorderState().status !== 'idle') {
+      return
+    }
+    if (item.layer) {
+      deleteLayer(item.layer.id)
+    } else if (item.draft) {
+      const draftKey = item.draft.key
+      setDrafts(drafts.filter((draft) => draft.key !== draftKey))
+    }
+  }
+
   // Keyboard shortcuts (SPEC 0.6): Space records the active layer, Z undo,
   // 1-9 mute, M metronome. The handler reads the latest values from a ref,
   // so it is set up once.
@@ -264,6 +279,7 @@ export function RifflApp() {
                   onActivate={() => setActiveKey(item.key)}
                   onRecord={() => handleRecord(item)}
                   onSoundChange={(sound) => handleSoundChange(item, sound)}
+                  onDelete={() => handleDelete(item)}
                 />
               )
             })}

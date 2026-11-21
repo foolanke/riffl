@@ -1,5 +1,5 @@
 // Layer card (design.md 5.9): collapsed = number, sound, chevron right.
-// Expanded = header, RECORD, audio bar, sound Select.
+// Expanded = header, RECORD, audio bar, sound Select, MUTE / DELETE row.
 // A draft card (not recorded yet) records a new take; a recorded card retakes it.
 // The Select lists drums and melody instruments (design.md 5.8). A draft can be
 // either; a recorded layer keeps its kind, since a retake records the same kind.
@@ -10,6 +10,7 @@ import { INSTRUMENTS } from '../../audio/instruments.ts'
 import type { InstrumentName } from '../../audio/instruments.ts'
 import { getLoopProgress } from '../../audio/clock.ts'
 import type { RecordStatus } from '../../audio/recorder.ts'
+import { toggleLayerMuted } from '../../project/projectStore.ts'
 import { useIsPlaying, useProject } from '../hooks.ts'
 import { ICONS } from './icons.ts'
 import { formatMinutesSeconds, getItemSound, getLoopSeconds, getStepMap, getStepsInLoop } from './layerItems.ts'
@@ -31,6 +32,7 @@ interface LayerCardProps {
   onActivate: () => void
   onRecord: () => void
   onSoundChange: (sound: LayerSound) => void
+  onDelete: () => void // recorded layer: from the project; draft: from the page
 }
 
 export function LayerCard(props: LayerCardProps) {
@@ -116,6 +118,34 @@ export function LayerCard(props: LayerCardProps) {
               ) : null}
             </select>
             <img src={ICONS.chevronDown} alt="" />
+          </div>
+
+          {/* Mute and delete (SPEC 1.6). A draft has nothing to mute yet. */}
+          <div className="layer-card-actions">
+            <button
+              className="button-outline text-item"
+              type="button"
+              disabled={item.layer === null}
+              onClick={(event) => {
+                if (item.layer) {
+                  toggleLayerMuted(item.layer.id)
+                }
+                event.currentTarget.blur()
+              }}
+            >
+              {item.muted ? 'Unmute' : 'Mute'}
+            </button>
+            <button
+              className="button-outline text-item"
+              type="button"
+              disabled={isBusy}
+              onClick={(event) => {
+                props.onDelete()
+                event.currentTarget.blur()
+              }}
+            >
+              Delete
+            </button>
           </div>
 
           {props.message ? <p className="layer-card-message text-label color-muted">{props.message}</p> : null}
