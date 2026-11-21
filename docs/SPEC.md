@@ -8,7 +8,7 @@
 
 **Demo goal.** In the live demo we rebuild **I Gotta Feeling** (Black Eyed Peas) from scratch, layer by layer, as a near-perfect replica. The whole build is reverse-engineered around this song: every default, sound choice and feature is chosen so this song sounds right. Song facts: 128 BPM, 4/4, key of G major, chord loop G – C – Em. When in doubt, pick whatever makes this song sound closest to the original.
 
-**Scope of this build.** Sections 0–2 and build order steps 1–24: the foundation, project setup, and the full object-percussion workflow (mic detects hits, camera confirms them). Melody (section 3) is not designed yet and must not be built. Leave the code easy to extend with melodic layers later.
+**Scope of this build.** Sections 0–2 and build order steps 1–25: the foundation, project setup, and the full object-percussion workflow (mic detects hits, camera confirms them). Melody (section 3) is not designed yet and must not be built. Leave the code easy to extend with melodic layers later.
 
 ## 0. Foundations
 
@@ -96,6 +96,12 @@ The user hears the object's real sound acoustically while playing. Drum samples 
 ### 1.5 Snapping to the beat
 After the take, every kept hit is moved to the nearest grid position (default: 16th notes). Two hits landing on the same position merge into one.
 
+**Snapping is hidden from the user.** Users should feel the take is theirs, not that AI corrected it. Nobody taps like a metronome, so the sound is snapped (percussion has to be on the beat), but the screen never shows it.
+- **What you hear:** the snapped hits. Playback always uses the grid positions.
+- **What you see:** the raw hits, drawn where the user actually tapped (after lag correction, 2.5). They look slightly uneven and human, not locked to grid dots.
+- Each layer stores both: the raw hit times (for the screen) and the snapped grid positions (for playback). Undo, retake and save/load keep both.
+- The UI never shows grid dots, snapped positions, "nearest 16th" labels or timing offsets for hits.
+
 ### 1.6 Layers, undo, retakes
 - Every take creates a new layer. Recording the kick twice gives two kick layers.
 - Each layer can be muted or deleted.
@@ -128,7 +134,7 @@ Changeable at any time:
 - **Count-in:** off, 1 bar, or 2 bars.
 
 ### 2.3 Fixed by us (not user-facing)
-- **Snap resolution:** 16th notes.
+- **Snap resolution:** 16th notes. Hidden from the user (1.5).
 
 ### 2.4 Defaults
 New projects open with the demo song's settings: 128 BPM, 4/4, key of G major.
@@ -180,3 +186,6 @@ The mic-only drum loop (parts A–C) must fully work before any camera work (par
 22. **Hand-in-box.** A box lights up while a hand is inside it. *Done when:* lighting is reliable when tapping the object.
 23. **Camera confirmation.** During a take, save hand positions with timestamps; after the take, keep only mic hits with a hand in the box (1.4); add the on/off toggle. *Done when:* tapping the object records hits, while talking or clapping away from it doesn't.
 24. **Object-based takes.** Selecting an object sets the drum for the take. *Done when:* the full flow works: set up object → Space → play → new layer with that object's drum.
+
+### Part E: Tap view
+25. **Raw hit view.** Each layer stores its raw hit times next to its snapped positions (1.5). Each layer is shown as a loop-long strip with a mark at every raw hit time, plus a playhead. Remove any on-screen snapped-step or timing-offset text. *Done when:* a sloppy take shows uneven marks where you actually tapped, sounds perfectly in time, and a refresh or loaded file shows the same marks.

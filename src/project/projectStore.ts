@@ -26,11 +26,31 @@ export interface Layer {
   drum: DrumName
   hits: number[]
   muted: boolean
+  // The object this take was played on (step 24), so a retake checks the
+  // same box. Missing for takes recorded without an object.
+  objectId?: string
+}
+
+// A box on the camera image, 0..1 from left to right and top to bottom.
+// Stored in camera-image coordinates (not mirrored like the screen).
+export interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+// A physical object on the table (SPEC 1.2): one fixed box, one drum.
+export interface TrackedObject {
+  id: string
+  drum: DrumName
+  box: Box
 }
 
 export interface Project {
   version: number // file format version, for loading saves later
   settings: ProjectSettings
+  objects: TrackedObject[]
   layers: Layer[]
 }
 
@@ -79,6 +99,7 @@ export function createDefaultProject(): Project {
       metronomeVolume: 0.8,
       countInBars: 1, // SPEC 1.3: 1-bar count-in
     },
+    objects: [],
     layers: [],
   }
 }
@@ -166,6 +187,44 @@ export function replaceLayerHits(layerId: string, hits: number[]): void {
     }
   }
   setProject({ ...currentProject, layers: updated })
+}
+
+// ---- Objects (SPEC 1.2, step 21) ----
+// Not part of undo: undo is only for takes (SPEC 1.6).
+
+export function addObject(object: TrackedObject): void {
+  setProject({ ...currentProject, objects: [...currentProject.objects, object] })
+}
+
+export function deleteObject(objectId: string): void {
+  const remaining: TrackedObject[] = []
+  for (const object of currentProject.objects) {
+    if (object.id !== objectId) {
+      remaining.push(object)
+    }
+  }
+  setProject({ ...currentProject, objects: remaining })
+}
+
+export function setObjectDrum(objectId: string, drum: DrumName): void {
+  const updated: TrackedObject[] = []
+  for (const object of currentProject.objects) {
+    if (object.id === objectId) {
+      updated.push({ ...object, drum: drum })
+    } else {
+      updated.push(object)
+    }
+  }
+  setProject({ ...currentProject, objects: updated })
+}
+
+export function findObject(objectId: string | null | undefined): TrackedObject | null {
+  for (const object of currentProject.objects) {
+    if (object.id === objectId) {
+      return object
+    }
+  }
+  return null
 }
 
 // ---- Layers ----
