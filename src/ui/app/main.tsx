@@ -4,8 +4,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { initAutoSave } from '../../project/saveLoad.ts'
 import { RifflApp } from './RifflApp.tsx'
-import './tokens.css'
-import './app.css'
+import './styles/tokens.css'
+import './styles/app.css'
 
 // The UI is sized for a 1920 x 1080 screen. On smaller screens everything
 // scales down in proportion (never up), using whichever side is tighter.

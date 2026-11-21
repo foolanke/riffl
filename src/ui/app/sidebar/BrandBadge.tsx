@@ -3,9 +3,9 @@
 // The settings icon (not a design asset; drawn in the icons' style) replaces
 // the sidebar toggle and opens the settings overlay, on the start screen too.
 import { useState } from 'react'
-import { ICONS } from './icons.ts'
-import settingsIcon from './icons/icon-settings.svg'
-import { SettingsOverlay } from './SettingsSection.tsx'
+import { releaseFocus } from '../components/releaseFocus.ts'
+import { ICONS } from '../icons.ts'
+import { SettingsOverlay } from '../settings/SettingsOverlay.tsx'
 
 interface BrandBadgeProps {
   audioStarted: boolean // false on the start screen: no mic settings yet
@@ -25,10 +25,10 @@ export function BrandBadge(props: BrandBadgeProps) {
           title="Settings"
           onClick={(event) => {
             setSettingsOpen(true)
-            event.currentTarget.blur() // so Space records instead of pressing this
+            releaseFocus(event.currentTarget)
           }}
         >
-          <img src={settingsIcon} alt="" />
+          <img src={ICONS.settings} alt="" />
         </button>
         <div className="brand-divider" />
         <div className="brand-wordmark-cell">RIFFL</div>

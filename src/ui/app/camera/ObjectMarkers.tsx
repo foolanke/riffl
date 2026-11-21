@@ -9,21 +9,17 @@
 // re-renders when the objects themselves change (SPEC 0.1).
 import { useEffect, useRef } from 'react'
 import type { PointerEvent } from 'react'
-import { getDrumLabel } from '../../audio/drums.ts'
-import { onLiveHit } from '../../audio/mic.ts'
-import { getProject } from '../../project/projectStore.ts'
-import type { Box, TrackedObject } from '../../project/projectStore.ts'
-import { getLatestHandFrame } from '../../vision/handTracking.ts'
-import type { HandPoint } from '../../vision/handTracking.ts'
-import { MIN_BOX_SIZE, findObjectAtPoint, isPointInBox, makeBoxFromCorners } from '../../vision/objects.ts'
-import { useProject } from '../hooks.ts'
-import cornerBl from './icons/corner-bl.svg'
-import cornerBr from './icons/corner-br.svg'
-import cornerTl from './icons/corner-tl.svg'
-import cornerTr from './icons/corner-tr.svg'
-import tapRipple from './icons/tap-ripple.svg'
-import { getImageFit } from './MelodyGuide.tsx'
-import type { ImageFit } from './MelodyGuide.tsx'
+import { getDrumLabel } from '../../../audio/drums.ts'
+import { onLiveHit } from '../../../audio/mic.ts'
+import { getProject } from '../../../project/projectStore.ts'
+import type { Box, TrackedObject } from '../../../project/projectStore.ts'
+import { getLatestHandFrame } from '../../../vision/handTracking.ts'
+import type { HandPoint } from '../../../vision/handTracking.ts'
+import { MIN_BOX_SIZE, findObjectAtPoint, isPointInBox, makeBoxFromCorners } from '../../../vision/objects.ts'
+import { useProject } from '../../hooks.ts'
+import { ICONS } from '../icons.ts'
+import { boxToPanel, getImageFit, imageToPanel, panelToImage } from './imageFit.ts'
+import type { ImageFit, PanelRect } from './imageFit.ts'
 
 // The tag sits 32px above the box (design.md 5.17). Closer to the top of the
 // camera than that, it would be cut off, so it moves below the box instead.
@@ -35,13 +31,6 @@ interface ObjectMarkersProps {
   onDraw: (box: Box) => void
   onSelect: (objectId: string | null) => void // null = clicked empty camera: mic only
   onDelete: (objectId: string) => void
-}
-
-interface Rect {
-  left: number
-  top: number
-  width: number
-  height: number
 }
 
 export function ObjectMarkers(props: ObjectMarkersProps) {
@@ -145,10 +134,10 @@ function ObjectMarker(props: { object: TrackedObject; linked: boolean; editable:
   return (
     // Placed by the frame loop (left/top/width/height), found by data-id.
     <div className={'object-marker' + (props.linked ? ' is-linked' : '')} data-id={props.object.id}>
-      <img className="object-corner is-tl" src={cornerTl} alt="" />
-      <img className="object-corner is-tr" src={cornerTr} alt="" />
-      <img className="object-corner is-bl" src={cornerBl} alt="" />
-      <img className="object-corner is-br" src={cornerBr} alt="" />
+      <img className="object-corner is-tl" src={ICONS.cornerTl} alt="" />
+      <img className="object-corner is-tr" src={ICONS.cornerTr} alt="" />
+      <img className="object-corner is-bl" src={ICONS.cornerBl} alt="" />
+      <img className="object-corner is-br" src={ICONS.cornerBr} alt="" />
       <div className="object-tag text-label">
         <span>Object · {getDrumLabel(props.object.drum)}</span>
         {props.editable ? (
@@ -187,24 +176,10 @@ function toImagePoint(event: PointerEvent<HTMLDivElement>): HandPoint {
   const layoutX = ((event.clientX - rect.left) / rect.width) * layer.clientWidth
   const layoutY = ((event.clientY - rect.top) / rect.height) * layer.clientHeight
   const fit = getLayerFit(layer)
-  // Mirrored: screen left is the camera image's right.
-  return { x: 1 - (layoutX - fit.offsetX) / fit.width, y: (layoutY - fit.offsetY) / fit.height }
+  return panelToImage(layoutX, layoutY, fit)
 }
 
-function boxToLayout(box: Box, fit: ImageFit): Rect {
-  return {
-    left: fit.offsetX + (1 - box.x - box.width) * fit.width,
-    top: fit.offsetY + box.y * fit.height,
-    width: box.width * fit.width,
-    height: box.height * fit.height,
-  }
-}
-
-function pointToLayout(point: HandPoint, fit: ImageFit): { x: number; y: number } {
-  return { x: fit.offsetX + (1 - point.x) * fit.width, y: fit.offsetY + point.y * fit.height }
-}
-
-function placeElement(element: HTMLElement, rect: Rect) {
+function placeElement(element: HTMLElement, rect: PanelRect) {
   element.style.left = rect.left + 'px'
   element.style.top = rect.top + 'px'
   element.style.width = rect.width + 'px'
@@ -223,7 +198,7 @@ function updateMarkers(layer: HTMLDivElement) {
     if (object === null) {
       continue
     }
-    const rect = boxToLayout(object.box, fit)
+    const rect = boxToPanel(object.box, fit)
     placeElement(marker, rect)
     marker.classList.toggle('is-tag-below', rect.top < TAG_OFFSET)
     marker.classList.toggle('is-hand-inside', getHandPointsInBox(frame.hands, object.box).length > 0)
@@ -240,7 +215,7 @@ function updateDraft(layer: HTMLDivElement, draft: HTMLDivElement | null, drag: 
   }
   // Same clipping as the box that will be saved.
   const box = makeBoxFromCorners(drag.start, drag.current)
-  placeElement(draft, boxToLayout(box, getLayerFit(layer)))
+  placeElement(draft, boxToPanel(box, getLayerFit(layer)))
   draft.style.display = 'block'
 }
 
@@ -259,10 +234,10 @@ function addRipplesForHit(layer: HTMLDivElement) {
       sumX += point.x
       sumY += point.y
     }
-    const center = pointToLayout({ x: sumX / inside.length, y: sumY / inside.length }, fit)
+    const center = imageToPanel({ x: sumX / inside.length, y: sumY / inside.length }, fit)
 
     const ripple = document.createElement('img')
-    ripple.src = tapRipple
+    ripple.src = ICONS.tapRipple
     ripple.alt = ''
     ripple.className = 'tap-ripple object-ripple'
     ripple.style.left = center.x + 'px'
