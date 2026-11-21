@@ -2,9 +2,9 @@
 // designed page has no place for yet (design.md 10, Q7). Tempo and metronome
 // on/off stay in the metronome strip.
 //
-// Not designed, so it is built from existing parts. The sidebar shows a
-// SETTINGS row like a collapsed layer card (5.9); clicking it opens an
-// overlay over the middle 75% of the screen (human's request), with the
+// Not designed, so it is built from existing parts. The settings icon in the
+// brand badge opens an overlay over the middle 75% of the screen (human's
+// request), with the
 // settings in columns: compact rows like the metronome strip (5.4) with
 // BPM-chip selects, the toggle switch, and outline buttons (5.5, 5.6).
 // Esc, CLOSE or a click outside the panel closes it.
@@ -45,18 +45,22 @@ const METER_FALL_PER_FRAME = 0.9 // so short peaks stay visible a moment
 const HIT_FLASH_MS = 120
 const NEW_PROJECT_CONFIRM_MS = 3000 // the "sure?" state resets after this
 
-export function SettingsSection() {
-  const [open, setOpen] = useState(false)
+interface SettingsOverlayProps {
+  showMic: boolean // false on the start screen: the mic needs audio started first
+  onClose: () => void
+}
+
+// The settings panel over the middle 75% of the screen (human's request),
+// opened from the settings icon in the brand badge.
+export function SettingsOverlay(props: SettingsOverlayProps) {
+  const onClose = props.onClose
 
   // Esc closes the overlay.
   useEffect(
     function () {
-      if (!open) {
-        return
-      }
       function handleKeyDown(event: KeyboardEvent) {
         if (event.key === 'Escape') {
-          setOpen(false)
+          onClose()
         }
       }
       window.addEventListener('keydown', handleKeyDown)
@@ -64,59 +68,35 @@ export function SettingsSection() {
         window.removeEventListener('keydown', handleKeyDown)
       }
     },
-    [open],
+    [onClose],
   )
 
   return (
-    <>
-      <div className="layer-card settings is-collapsed">
-        <button
-          className="layer-card-header"
-          type="button"
-          aria-haspopup="dialog"
-          onClick={(event) => {
-            setOpen(true)
-            event.currentTarget.blur() // so Space records instead of pressing this
-          }}
-        >
-          <span className="text-item">Settings</span>
-          <span className="layer-card-spacer" />
-          <img src={ICONS.chevronRight} alt="" />
-        </button>
-      </div>
-
-      {open ? (
-        <div
-          className="settings-backdrop"
-          onPointerDown={(event) => {
-            // Only a click on the dimmed area itself, not inside the panel.
-            if (event.target === event.currentTarget) {
-              setOpen(false)
-            }
-          }}
-        >
-          <div className="settings-panel" role="dialog" aria-label="Settings">
-            <div className="settings-panel-header">
-              <span className="text-title">Settings</span>
-              <div className="layers-header-spacer" />
-              <button
-                className="button-outline text-item"
-                type="button"
-                onClick={() => setOpen(false)}
-              >
-                Close
-              </button>
-            </div>
-            <SettingsBody />
-          </div>
+    <div
+      className="settings-backdrop"
+      onPointerDown={(event) => {
+        // Only a click on the dimmed area itself, not inside the panel.
+        if (event.target === event.currentTarget) {
+          onClose()
+        }
+      }}
+    >
+      <div className="settings-panel" role="dialog" aria-label="Settings">
+        <div className="settings-panel-header">
+          <span className="text-title">Settings</span>
+          <div className="layers-header-spacer" />
+          <button className="button-outline text-item" type="button" onClick={onClose}>
+            Close
+          </button>
         </div>
-      ) : null}
-    </>
+        <SettingsBody showMic={props.showMic} />
+      </div>
+    </div>
   )
 }
 
 // Only mounted while open, so the mic meter's animation frame loop only runs then.
-function SettingsBody() {
+function SettingsBody(props: { showMic: boolean }) {
   const settings = useProject().settings
   const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
   const takeRunning = recorder.status !== 'idle'
@@ -210,10 +190,12 @@ function SettingsBody() {
       </SettingsRow>
       </div>
 
-      <div className="settings-group">
-        <div className="section-title text-label">Mic</div>
-        <MicSettings />
-      </div>
+      {props.showMic ? (
+        <div className="settings-group">
+          <div className="section-title text-label">Mic</div>
+          <MicSettings />
+        </div>
+      ) : null}
 
       <div className="settings-group">
         <div className="section-title text-label">Project file</div>

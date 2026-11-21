@@ -123,7 +123,7 @@
   white-space: nowrap;
 }
 
-/* The collapsed sidebar isn't designed yet (design.md 10, Q10), so the toggle does nothing. */
+/* Left cell: the settings button (replaces the design's sidebar toggle). */
 .brand-toggle-cell {
   display: flex;
   align-items: center;
@@ -131,7 +131,11 @@
   padding: 8px 16px;
   background: none;
   border: none;
-  cursor: default;
+  cursor: pointer;
+}
+
+.brand-toggle-cell:hover img {
+  opacity: 0.8;
 }
 
 .brand-toggle-cell img {
@@ -140,20 +144,6 @@
   height: 24px;
 }
 
-/* Start screen: the 20px waveform icon in a 24px box, so the cell keeps the
-   toggle cell's size. */
-.brand-icon-box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-}
-
-.brand-icon-box img {
-  width: 20px;
-  height: 20px;
-}
 
 /* ---- 5.3 Record button, 5.7 Download button (filled buttons) ---- */
 
@@ -1091,11 +1081,6 @@
    buttons (5.5 / 5.6). No new colours. */
 
 /* The card may shrink when the sidebar is full; its body then scrolls. */
-/* The sidebar entry: a collapsed card that opens the overlay. */
-.layer-card.settings {
-  flex-shrink: 0;
-}
-
 /* Overlay over the whole page, panel over the middle 75% (human's request). */
 .settings-backdrop {
   position: fixed;
