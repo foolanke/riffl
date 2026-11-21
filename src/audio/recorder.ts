@@ -27,6 +27,11 @@
 // undo, retake and save all go through the same code as drum layers.
 // Space records whatever was picked last: an instrument -> melody take,
 // a drum or object -> drum take.
+//
+// Take speed (team extra, not in SPEC): a take can be recorded slower
+// (e.g. 0.5x), for parts too fast to play by hand or camera. Count-in and
+// the recorded loop run slow; at the loop end the tempo jumps back and the
+// new layer loops at full speed. Works because layers are stored in steps.
 import * as Tone from 'tone'
 import { addTakeLayer, findObject, getLayerSoundSteps, getProject, replaceTakeLayer } from '../project/projectStore.ts'
 import type { Box, DrumLayer, Layer, MelodyLayer, MelodyNote, TrackedObject } from '../project/projectStore.ts'
@@ -106,9 +111,13 @@ export interface MelodyTakeReport {
 // What Space records next.
 export type TakeKind = 'drum' | 'melody'
 
+// Speeds offered for slow takes. 1 = normal.
+export const TAKE_SPEEDS: number[] = [1, 0.75, 0.5]
+
 export interface RecorderState {
   status: RecordStatus
   takeKind: TakeKind
+  takeSpeed: number // 1 = normal, 0.5 = record at half speed
   takeDrum: DrumName
   takeObjectId: string | null // object chosen for the next take (step 24)
   cameraConfirmOn: boolean // SPEC 1.4 safety toggle
@@ -123,6 +132,7 @@ export interface RecorderState {
 let state: RecorderState = {
   status: 'idle',
   takeKind: 'drum',
+  takeSpeed: 1,
   takeDrum: 'kick',
   takeObjectId: null,
   cameraConfirmOn: true,
@@ -181,6 +191,12 @@ export function selectObjectForTake(objectId: string | null): void {
     setState({ takeObjectId: object.id, takeDrum: object.drum, takeKind: 'drum' })
   } else {
     setState({ takeObjectId: null })
+  }
+}
+
+export function setTakeSpeed(speed: number): void {
+  if (state.status === 'idle') {
+    setState({ takeSpeed: speed })
   }
 }
 
@@ -271,7 +287,7 @@ async function recordDrumTake(retakeLayer: DrumLayer | null): Promise<void> {
 
     startCapture()
     startRecordingHands()
-    const timing = playForTake()
+    const timing = playForTake(state.takeSpeed)
     const loopEndTime = timing.loopStartTime + timing.loopSeconds
     silenceUntilTime = loopEndTime
     const speakerSteps = getStepsPlayedBySpeakers(timing)
@@ -357,7 +373,7 @@ async function recordMelodyTake(retakeLayer: MelodyLayer | null): Promise<void> 
     // Notes play live during the whole take (count-in too, to find the key).
     setLiveMelodyTakeMode('melody', instrument)
     startNoteLog()
-    const timing = playForTake()
+    const timing = playForTake(state.takeSpeed)
     const loopEndTime = timing.loopStartTime + timing.loopSeconds
     silenceUntilTime = loopEndTime
 

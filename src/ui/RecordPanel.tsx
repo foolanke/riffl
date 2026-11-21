@@ -16,7 +16,9 @@ import {
   setMuteLayersWhileRecording,
   setTakeDrum,
   setTakeKind,
+  setTakeSpeed,
   subscribeToRecorder,
+  TAKE_SPEEDS,
 } from '../audio/recorder.ts'
 import type { RecordStatus, TakeKind } from '../audio/recorder.ts'
 import { findObject, undoLastTake } from '../project/projectStore.ts'
@@ -129,6 +131,26 @@ export function RecordPanel() {
         <button onClick={() => undoLastTake()} disabled={isBusy}>
           Undo last take (Z)
         </button>
+      </p>
+      <p>
+        <label>
+          Take speed:{' '}
+          <select
+            value={recorder.takeSpeed}
+            disabled={isBusy}
+            onChange={(event) => {
+              setTakeSpeed(Number(event.target.value))
+              event.target.blur() // so Space records instead of opening the list
+            }}
+          >
+            {TAKE_SPEEDS.map((speed) => (
+              <option key={speed} value={speed}>
+                {speed === 1 ? '1x (normal)' : speed + 'x'}
+              </option>
+            ))}
+          </select>
+        </label>{' '}
+        (record slower, the layer plays back at normal speed)
       </p>
       <p>
         <label>
