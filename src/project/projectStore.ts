@@ -269,6 +269,20 @@ export function addLayers(newLayers: Layer[]): void {
   setProject({ ...currentProject, layers: [...currentProject.layers, ...newLayers] })
 }
 
+// Change which drum a recorded drum layer plays; its hits stay the same.
+// Used by the designed page's layer card. Not undoable (undo is for takes, SPEC 1.6).
+export function setLayerDrum(layerId: string, drum: DrumName): void {
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId && layer.type === 'drum') {
+      updated.push({ ...layer, drum: drum })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
 export function deleteLayer(layerId: string): void {
   const remaining: Layer[] = []
   for (const layer of currentProject.layers) {

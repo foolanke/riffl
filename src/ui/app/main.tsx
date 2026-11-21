@@ -1,0 +1,18 @@
+// Starts the designed riffl page (served at /).
+// The old test page has its own entry: test.html -> src/main.tsx.
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import { initAutoSave } from '../../project/saveLoad.ts'
+import { RifflApp } from './RifflApp.tsx'
+import './tokens.css'
+import './app.css'
+
+// Load the auto-saved project (if any) before anything reads it.
+// Both pages share it, so layers made on one show up on the other.
+initAutoSave()
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <RifflApp />
+  </StrictMode>,
+)
