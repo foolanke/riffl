@@ -19,7 +19,10 @@ import {
 } from '../../project/projectStore.ts'
 import { downloadProjectFile } from '../../project/saveLoad.ts'
 import { useProject } from '../hooks.ts'
+import { getCameraLagCheckState, subscribeToCameraLagCheck } from '../../audio/cameraLagCheck.ts'
+import { getLagCheckState, subscribeToLagCheck } from '../../audio/lagCheck.ts'
 import { BrandBadge } from './BrandBadge.tsx'
+import { CalibrationSection, getCalibrationHint } from './CalibrationSection.tsx'
 import { CameraView } from './CameraView.tsx'
 import { ICONS } from './icons.ts'
 import { LayerCard } from './LayerCard.tsx'
@@ -39,6 +42,8 @@ export function RifflApp() {
   const [recordingKey, setRecordingKey] = useState<string | null>(null)
   const project = useProject()
   const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
+  const micCheck = useSyncExternalStore(subscribeToLagCheck, getLagCheckState)
+  const cameraCheck = useSyncExternalStore(subscribeToCameraLagCheck, getCameraLagCheckState)
 
   const items = buildLayerItems(project.layers, drafts)
   // If the active layer is gone (deleted, undone), fall back to the newest one.
@@ -61,7 +66,7 @@ export function RifflApp() {
   }
 
   async function handleRecord(item: LayerItem) {
-    if (getRecorderState().status !== 'idle') {
+    if (getRecorderState().status !== 'idle' || isCalibrating()) {
       return
     }
     setActiveKey(item.key)
@@ -180,7 +185,9 @@ export function RifflApp() {
   }
 
   const hudLabel = activeItem ? `Layer ${activeItem.number} / ${activeItem.soundLabel}` : 'Setup / Camera'
-  const hintText = getHintText(recorder.status, project.layers.length > 0)
+  // A running calibration takes over the hint pill.
+  const calibrationHint = getCalibrationHint(micCheck.status, cameraCheck.status)
+  const hintText = calibrationHint !== null ? calibrationHint : getHintText(recorder.status, project.layers.length > 0)
 
   // The active card comes first and is expanded (design.md 4.2).
   const cardOrder: LayerItem[] = []
@@ -228,6 +235,8 @@ export function RifflApp() {
 
         <div className="sidebar-spacer" />
 
+        <CalibrationSection cameraOk={cameraOk} />
+
         <div className="sidebar-footer">
           <button
             className="button-filled button-download text-item"
@@ -248,6 +257,11 @@ export function RifflApp() {
       </aside>
     </div>
   )
+}
+
+// A take and a lag check both use the clock and mic, so never run both at once.
+function isCalibrating(): boolean {
+  return getLagCheckState().status !== 'idle' || getCameraLagCheckState().status !== 'idle'
 }
 
 // The hint pill at the bottom of the camera: take progress while recording,
