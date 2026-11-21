@@ -140,6 +140,21 @@
   height: 24px;
 }
 
+/* Start screen: the 20px waveform icon in a 24px box, so the cell keeps the
+   toggle cell's size. */
+.brand-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.brand-icon-box img {
+  width: 20px;
+  height: 20px;
+}
+
 /* ---- 5.3 Record button, 5.7 Download button (filled buttons) ---- */
 
 .button-filled {
