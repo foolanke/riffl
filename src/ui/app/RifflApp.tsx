@@ -1,18 +1,22 @@
 // The designed riffl page (docs/design.md, Figma states 0-1).
 // Layout: camera + layers panel on the left, sidebar on the right.
 //
-// Layers: ADD LAYER makes a draft card (01, 02 ...) with a drum picker.
-// RECORD on a draft records a new take with that drum (the same take flow
-// as the test page, SPEC 1.3); the finished take replaces the draft.
-// RECORD on a recorded layer retakes it (SPEC 1.6).
+// Layers: ADD LAYER makes a draft card (01, 02 ...) with a sound picker
+// (drums and melody instruments). RECORD on a draft records a new take with
+// that sound (the same take flow as the test page, SPEC 1.3, 3.7); the
+// finished take replaces the draft. RECORD on a recorded layer retakes it (SPEC 1.6).
+//
+// Melody: pinches play live notes (SPEC 3.6) only while the active card is a
+// melody layer, so hands near drum objects never set off notes.
 //
 // The old step-by-step test page stays at /test.html, unchanged.
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import type { DrumName } from '../../audio/drums.ts'
+import { selectInstrument, setLiveMelodyOn } from '../../audio/liveMelody.ts'
 import { getRecorderState, recordTake, setTakeDrum, setTakeKind, subscribeToRecorder } from '../../audio/recorder.ts'
 import {
   getProject,
   setLayerDrum,
+  setLayerInstrument,
   toggleLayerMutedByIndex,
   undoLastTake,
   updateSettings,
@@ -27,16 +31,19 @@ import { CameraView } from './CameraView.tsx'
 import { ICONS } from './icons.ts'
 import { LayerCard } from './LayerCard.tsx'
 import { LayersPanel } from './LayersPanel.tsx'
-import { buildLayerItems, findItem } from './layerItems.ts'
-import type { DraftLayer, LayerItem } from './layerItems.ts'
+import { buildLayerItems, findItem, getItemSound, isMelodyItem } from './layerItems.ts'
+import type { DraftLayer, LayerItem, LayerSound } from './layerItems.ts'
 import { MetronomeStrip } from './MetronomeStrip.tsx'
 import { StartOverlay } from './StartOverlay.tsx'
 
 const SETUP_HINT = 'Point the camera at an object, then press record'
+const MELODY_HINT = 'Pinch your thumb to a finger to play'
+const NO_TRACKING_HINT = 'Hand tracking unavailable. Melody needs the camera.'
 
 export function RifflApp() {
   const [started, setStarted] = useState(false)
   const [cameraOk, setCameraOk] = useState(true)
+  const [trackingOk, setTrackingOk] = useState(true)
   const [drafts, setDrafts] = useState<DraftLayer[]>([])
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [recordingKey, setRecordingKey] = useState<string | null>(null)
@@ -52,15 +59,32 @@ export function RifflApp() {
     activeItem = items[items.length - 1]
   }
 
+  // Live notes follow the active card: on for a melody layer (with its
+  // instrument, for free play), off otherwise.
+  const activeSound = activeItem ? getItemSound(activeItem) : null
+  const activeInstrument = activeSound && activeSound.kind === 'melody' ? activeSound.instrument : null
+  useEffect(
+    function () {
+      if (activeInstrument !== null) {
+        selectInstrument(activeInstrument)
+        setLiveMelodyOn(true)
+      } else {
+        setLiveMelodyOn(false)
+      }
+    },
+    [activeInstrument, started],
+  )
+
   function handleAddLayer() {
-    // A new layer starts on the drum picked last, or kick.
-    let drum: DrumName = 'kick'
-    if (activeItem && activeItem.draft) {
-      drum = activeItem.draft.drum
-    } else if (activeItem && activeItem.layer && activeItem.layer.type === 'drum') {
-      drum = activeItem.layer.drum
+    // A new layer starts on the sound picked last, or kick.
+    let sound: LayerSound = { kind: 'drum', drum: 'kick' }
+    if (activeItem) {
+      const itemSound = getItemSound(activeItem)
+      if (itemSound) {
+        sound = itemSound
+      }
     }
-    const draft: DraftLayer = { key: crypto.randomUUID(), drum: drum }
+    const draft: DraftLayer = { key: crypto.randomUUID(), sound: sound }
     setDrafts([...drafts, draft])
     setActiveKey(draft.key)
   }
@@ -82,19 +106,25 @@ export function RifflApp() {
       return
     }
 
-    // New drum take. Remember which layers existed, so the new one can be found.
+    // New take. Remember which layers existed, so the new one can be found.
     const draftKey = item.draft.key
+    const sound = item.draft.sound
     const idsBefore = new Set<string>()
     for (const layer of getProject().layers) {
       idsBefore.add(layer.id)
     }
-    setTakeKind('drum')
-    setTakeDrum(item.draft.drum) // also clears any chosen object: mic-only for now
+    if (sound.kind === 'drum') {
+      setTakeKind('drum')
+      setTakeDrum(sound.drum) // also clears any chosen object: mic-only for now
+    } else {
+      selectInstrument(sound.instrument) // a new melody take uses the selected instrument
+      setTakeKind('melody')
+    }
     await recordTake()
     setRecordingKey(null)
 
-    // The take found hits: the new layer replaces the draft. If it found
-    // none, no layer was made and the draft stays for another try.
+    // The take found hits (or notes): the new layer replaces the draft. If it
+    // found none, no layer was made and the draft stays for another try.
     for (const layer of getProject().layers) {
       if (!idsBefore.has(layer.id)) {
         setDrafts(function (current) {
@@ -106,16 +136,18 @@ export function RifflApp() {
     }
   }
 
-  function handleDrumChange(item: LayerItem, drum: DrumName) {
+  function handleSoundChange(item: LayerItem, sound: LayerSound) {
     if (item.draft) {
       const draftKey = item.draft.key
       setDrafts(
         drafts.map(function (draft) {
-          return draft.key === draftKey ? { key: draftKey, drum: drum } : draft
+          return draft.key === draftKey ? { key: draftKey, sound: sound } : draft
         }),
       )
-    } else if (item.layer && item.layer.type === 'drum') {
-      setLayerDrum(item.layer.id, drum)
+    } else if (item.layer && item.layer.type === 'drum' && sound.kind === 'drum') {
+      setLayerDrum(item.layer.id, sound.drum)
+    } else if (item.layer && item.layer.type === 'melody' && sound.kind === 'melody') {
+      setLayerInstrument(item.layer.id, sound.instrument)
     }
   }
 
@@ -176,8 +208,9 @@ export function RifflApp() {
   if (!started) {
     return (
       <StartOverlay
-        onStarted={function (cameraWorks) {
+        onStarted={function (cameraWorks, trackingWorks) {
           setCameraOk(cameraWorks)
+          setTrackingOk(trackingWorks)
           setStarted(true)
         }}
       />
@@ -187,7 +220,11 @@ export function RifflApp() {
   const hudLabel = activeItem ? `Layer ${activeItem.number} / ${activeItem.soundLabel}` : 'Setup / Camera'
   // A running calibration takes over the hint pill.
   const calibrationHint = getCalibrationHint(micCheck.status, cameraCheck.status)
-  const hintText = calibrationHint !== null ? calibrationHint : getHintText(recorder.status, project.layers.length > 0)
+  const melodyActive = isMelodyItem(activeItem)
+  let hintText = getHintText(recorder.status, project.layers.length > 0, melodyActive, trackingOk)
+  if (calibrationHint !== null) {
+    hintText = calibrationHint
+  }
 
   // The active card comes first and is expanded (design.md 4.2).
   const cardOrder: LayerItem[] = []
@@ -226,7 +263,7 @@ export function RifflApp() {
                   message={isActive ? recorder.message : ''}
                   onActivate={() => setActiveKey(item.key)}
                   onRecord={() => handleRecord(item)}
-                  onDrumChange={(drum) => handleDrumChange(item, drum)}
+                  onSoundChange={(sound) => handleSoundChange(item, sound)}
                 />
               )
             })}
@@ -265,8 +302,9 @@ function isCalibrating(): boolean {
 }
 
 // The hint pill at the bottom of the camera: take progress while recording,
-// otherwise the setup hint until the first layer exists.
-function getHintText(status: string, hasLayers: boolean): string | null {
+// the pinch hint on a melody card, otherwise the setup hint until the first
+// layer exists.
+function getHintText(status: string, hasLayers: boolean, melodyActive: boolean, trackingOk: boolean): string | null {
   if (status === 'countIn') {
     return 'Count-in. Get ready.'
   }
@@ -274,7 +312,10 @@ function getHintText(status: string, hasLayers: boolean): string | null {
     return 'Recording. Play now.'
   }
   if (status === 'processing') {
-    return 'Finding hits...'
+    return melodyActive ? 'Snapping notes...' : 'Finding hits...'
+  }
+  if (melodyActive) {
+    return trackingOk ? MELODY_HINT : NO_TRACKING_HINT
   }
   return hasLayers ? null : SETUP_HINT
 }

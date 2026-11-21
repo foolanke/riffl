@@ -4,13 +4,17 @@
 import { getDrumLabel } from '../../audio/drums.ts'
 import type { DrumName } from '../../audio/drums.ts'
 import { getInstrumentLabel } from '../../audio/instruments.ts'
+import type { InstrumentName } from '../../audio/instruments.ts'
 import { getLayerSoundSteps } from '../../project/projectStore.ts'
 import type { Layer, ProjectSettings } from '../../project/projectStore.ts'
 import { getStepsPerBar } from '../../project/projectStore.ts'
 
+// What a layer plays: a drum sound (SPEC 1.7) or a melody instrument (SPEC 3.5).
+export type LayerSound = { kind: 'drum'; drum: DrumName } | { kind: 'melody'; instrument: InstrumentName }
+
 export interface DraftLayer {
   key: string
-  drum: DrumName
+  sound: LayerSound
 }
 
 export interface LayerItem {
@@ -40,11 +44,37 @@ export function buildLayerItems(layers: Layer[], drafts: DraftLayer[]): LayerIte
       number: formatLayerNumber(items.length + 1),
       layer: null,
       draft: draft,
-      soundLabel: getDrumLabel(draft.drum),
+      soundLabel: getSoundLabel(draft.sound),
       muted: false,
     })
   }
   return items
+}
+
+export function getSoundLabel(sound: LayerSound): string {
+  return sound.kind === 'drum' ? getDrumLabel(sound.drum) : getInstrumentLabel(sound.instrument)
+}
+
+// The sound of a draft or recorded layer.
+export function getItemSound(item: LayerItem): LayerSound | null {
+  if (item.draft) {
+    return item.draft.sound
+  }
+  if (item.layer && item.layer.type === 'drum') {
+    return { kind: 'drum', drum: item.layer.drum }
+  }
+  if (item.layer && item.layer.type === 'melody') {
+    return { kind: 'melody', instrument: item.layer.instrument }
+  }
+  return null
+}
+
+export function isMelodyItem(item: LayerItem | null): boolean {
+  if (item === null) {
+    return false
+  }
+  const sound = getItemSound(item)
+  return sound !== null && sound.kind === 'melody'
 }
 
 export function findItem(items: LayerItem[], key: string | null): LayerItem | null {

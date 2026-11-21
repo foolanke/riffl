@@ -1,15 +1,19 @@
 // Layer card (design.md 5.9): collapsed = number, sound, chevron right.
 // Expanded = header, RECORD, audio bar, sound Select.
 // A draft card (not recorded yet) records a new take; a recorded card retakes it.
+// The Select lists drums and melody instruments (design.md 5.8). A draft can be
+// either; a recorded layer keeps its kind, since a retake records the same kind.
 import { useEffect, useRef } from 'react'
 import { DRUMS } from '../../audio/drums.ts'
 import type { DrumName } from '../../audio/drums.ts'
+import { INSTRUMENTS } from '../../audio/instruments.ts'
+import type { InstrumentName } from '../../audio/instruments.ts'
 import { getLoopProgress } from '../../audio/clock.ts'
 import type { RecordStatus } from '../../audio/recorder.ts'
 import { useIsPlaying, useProject } from '../hooks.ts'
 import { ICONS } from './icons.ts'
-import { formatMinutesSeconds, getLoopSeconds, getStepMap, getStepsInLoop } from './layerItems.ts'
-import type { LayerItem } from './layerItems.ts'
+import { formatMinutesSeconds, getItemSound, getLoopSeconds, getStepMap, getStepsInLoop } from './layerItems.ts'
+import type { LayerItem, LayerSound } from './layerItems.ts'
 
 const RECORD_LABELS: Record<RecordStatus, string> = {
   idle: 'Record',
@@ -26,19 +30,14 @@ interface LayerCardProps {
   message: string // status or result of the last take; '' = none
   onActivate: () => void
   onRecord: () => void
-  onDrumChange: (drum: DrumName) => void
+  onSoundChange: (sound: LayerSound) => void
 }
 
 export function LayerCard(props: LayerCardProps) {
   const item = props.item
-  const isMelody = item.layer !== null && item.layer.type === 'melody'
-
-  let selectedDrum: DrumName | null = null
-  if (item.draft) {
-    selectedDrum = item.draft.drum
-  } else if (item.layer && item.layer.type === 'drum') {
-    selectedDrum = item.layer.drum
-  }
+  const sound = getItemSound(item)
+  const showDrums = item.draft !== null || (item.layer !== null && item.layer.type === 'drum')
+  const showInstruments = item.draft !== null || (item.layer !== null && item.layer.type === 'melody')
 
   const isBusy = props.recorderStatus !== 'idle'
   const recordLabel = props.isRecordingThis ? RECORD_LABELS[props.recorderStatus] : RECORD_LABELS.idle
@@ -86,30 +85,36 @@ export function LayerCard(props: LayerCardProps) {
 
           <AudioBar item={item} />
 
-          <div className={'select' + (isMelody || isBusy ? ' is-disabled' : '')}>
-            {selectedDrum !== null ? (
-              <select
-                className="text-item"
-                aria-label="Drum sound"
-                value={selectedDrum}
-                disabled={isBusy}
-                onChange={(event) => {
-                  props.onDrumChange(event.target.value as DrumName)
-                  event.target.blur() // so Space records instead of opening the list
-                }}
-              >
-                {DRUMS.map((drum) => (
-                  <option key={drum.name} value={drum.name}>
-                    {drum.label.toUpperCase()}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              // Melody layers (made on the test page) keep their instrument here.
-              <select className="text-item" aria-label="Instrument" disabled value="current">
-                <option value="current">{item.soundLabel.toUpperCase()}</option>
-              </select>
-            )}
+          <div className={'select' + (isBusy ? ' is-disabled' : '')}>
+            <select
+              className="text-item"
+              aria-label="Sound"
+              value={sound ? encodeSound(sound) : ''}
+              disabled={isBusy}
+              onChange={(event) => {
+                props.onSoundChange(decodeSound(event.target.value))
+                event.target.blur() // so Space records instead of opening the list
+              }}
+            >
+              {showDrums ? (
+                <optgroup label="DRUMS">
+                  {DRUMS.map((drum) => (
+                    <option key={drum.name} value={'drum:' + drum.name}>
+                      {drum.label.toUpperCase()}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {showInstruments ? (
+                <optgroup label="MELODY">
+                  {INSTRUMENTS.map((instrument) => (
+                    <option key={instrument.name} value={'melody:' + instrument.name}>
+                      {instrument.label.toUpperCase()}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
             <img src={ICONS.chevronDown} alt="" />
           </div>
 
@@ -118,6 +123,19 @@ export function LayerCard(props: LayerCardProps) {
       ) : null}
     </div>
   )
+}
+
+// The select's option value: "drum:kick" or "melody:pluck".
+function encodeSound(sound: LayerSound): string {
+  return sound.kind === 'drum' ? 'drum:' + sound.drum : 'melody:' + sound.instrument
+}
+
+function decodeSound(value: string): LayerSound {
+  const name = value.slice(value.indexOf(':') + 1)
+  if (value.startsWith('melody:')) {
+    return { kind: 'melody', instrument: name as InstrumentName }
+  }
+  return { kind: 'drum', drum: name as DrumName }
 }
 
 // Audio bar (design.md 5.10). Past takes keep no audio, so the "waveform"

@@ -315,6 +315,12 @@
   color: var(--color-fg);
 }
 
+/* DRUMS / MELODY group headings in the sound picker. */
+.select optgroup {
+  background: var(--color-bg);
+  color: var(--color-fg-muted);
+}
+
 /* ---- 5.8 Select ---- */
 
 .select {

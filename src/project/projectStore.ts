@@ -283,6 +283,20 @@ export function setLayerDrum(layerId: string, drum: DrumName): void {
   setProject({ ...currentProject, layers: updated })
 }
 
+// Change which instrument a recorded melody layer plays; its notes stay the same.
+// Used by the designed page's layer card. Not undoable (undo is for takes, SPEC 1.6).
+export function setLayerInstrument(layerId: string, instrument: InstrumentName): void {
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId && layer.type === 'melody') {
+      updated.push({ ...layer, instrument: instrument })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
 export function deleteLayer(layerId: string): void {
   const remaining: Layer[] = []
   for (const layer of currentProject.layers) {
