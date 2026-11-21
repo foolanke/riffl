@@ -2,7 +2,8 @@
 
 - Read `docs/SPEC.md` before doing anything. It is the source of truth.
 - The demo goal is a near-perfect live rebuild of I Gotta Feeling (Black Eyed Peas). When choosing sounds or defaults, pick what makes that song sound closest to the original.
-- Never change `docs/SPEC.md` or this file. If the spec is unclear or seems wrong, stop and ask the human.
+- Read `docs/design.md` before creating or changing any UI component. It is the source of truth for how the UI looks (tokens, layout, components, copy). SPEC wins on behaviour, design.md wins on visuals. Use the SVGs in `docs/design/assets/` as-is, and never resolve the open questions in design.md section 9 on your own: ask the human.
+- Never change `docs/SPEC.md`, `docs/design.md` or this file. If the spec or design is unclear or seems wrong, stop and ask the human.
 - Build one feature at a time. When it's done, stop and tell the human exactly how to test it. Do not start the next feature until the human says the current one passes.
 - Keep code plain and readable: TypeScript, explicit loops, clear names, short comments explaining why.
 - Follow the offline rule (SPEC 0.2): no runtime loading from the internet.
