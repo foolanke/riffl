@@ -40,3 +40,10 @@ The oramics page does not name an exact license for the TR-808 set either. Confi
 Tone.js-hosted copy (https://tonejs.github.io/audio/salamander/). Every 3 semitones
 from A3 to C7; Tone.Sampler fills in the notes between. CC-BY needs credit to the
 author in any public release.
+
+## Electric guitar (melody instrument "Pluck", SPEC 3.5)
+
+`guitar/*.mp3`: electric guitar samples from tonejs-instruments by Nicholas Brosowsky
+(https://github.com/nbrosowsky/tonejs-instruments), samples licensed CC-BY 3.0.
+Every 3 semitones from C3 to C6; Tone.Sampler fills in the notes between.
+CC-BY needs credit in any public release.

@@ -5,6 +5,7 @@ import * as Tone from 'tone'
 import { initClock } from './clock.ts'
 import { initLayerPlayer } from './layerPlayer.ts'
 import { initLiveMelody } from './liveMelody.ts'
+import { initMasterBus } from './masterBus.ts'
 import { loadMelodyInstruments } from './melodySynths.ts'
 import { loadSamples } from './samples.ts'
 
@@ -12,6 +13,7 @@ import { loadSamples } from './samples.ts'
 // Tone.start() unlocks it, so it must be called from a click handler.
 export async function startAudio(): Promise<void> {
   await Tone.start()
+  initMasterBus()
   await loadSamples()
   await loadMelodyInstruments()
   initClock()
