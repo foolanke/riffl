@@ -44,6 +44,12 @@ const held: Record<HandSide, HeldNote | null> = { left: null, right: null }
 const lastSeenTime: Record<HandSide, number> = { left: 0, right: 0 }
 const lastDistances: Record<HandSide, PinchDistances | null> = { left: null, right: null }
 
+// Camera lag check (step 28): while set, live notes are silent and every
+// new pinch reports the camera time (ms, performance.now clock) of the
+// frame it was first seen in.
+let pinchStartListener: ((frameTimeMs: number) => void) | null = null
+const capturedFinger: Record<HandSide, FingerName | null> = { left: null, right: null }
+
 // Call once, after loadMelodyInstruments().
 export function initLiveMelody(): void {
   if (initialized) {
@@ -90,7 +96,55 @@ export function setLiveMelodyOn(on: boolean): void {
   }
 }
 
+// ---- Pinch capture for the camera lag check (step 28) ----
+
+export function startPinchCapture(listener: (frameTimeMs: number) => void): void {
+  for (const side of SIDES) {
+    stopNote(side)
+    resetPinch(side)
+    capturedFinger[side] = null
+  }
+  pinchStartListener = listener
+}
+
+export function stopPinchCapture(): void {
+  pinchStartListener = null
+  for (const side of SIDES) {
+    resetPinch(side)
+    capturedFinger[side] = null
+  }
+}
+
+// Same pinch detection as live play (so the measured lag matches what
+// melody takes will see), but silent: you only hear the clicks.
+// Works even with the melody checkbox off.
+function handleCaptureFrame(frame: HandFrame, listener: (frameTimeMs: number) => void): void {
+  const guideHands = getGuideHands(frame)
+  for (const side of SIDES) {
+    const hand = findHand(guideHands, side)
+    if (hand === null) {
+      lastDistances[side] = null
+      resetPinch(side)
+      capturedFinger[side] = null
+      continue
+    }
+    const distances = getPinchDistances(hand.points, frame.aspect)
+    lastDistances[side] = distances
+    const finger = updatePinch(side, distances)
+    // Only a pinch from open counts, not sliding to another finger.
+    if (finger !== null && capturedFinger[side] === null) {
+      listener(frame.time)
+    }
+    capturedFinger[side] = finger
+  }
+}
+
 function handleHandFrame(frame: HandFrame): void {
+  if (pinchStartListener !== null) {
+    handleCaptureFrame(frame, pinchStartListener)
+    return
+  }
+
   // During a drum take, hands are tapping objects; a stray pinch would
   // play a note that leaks into the mic and records as a drum hit.
   // Melody takes (step 29) will let notes play during their own take.

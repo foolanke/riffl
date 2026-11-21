@@ -9,6 +9,7 @@ import {
   updateSettings,
 } from '../project/projectStore.ts'
 import { BeatDisplay } from './BeatDisplay.tsx'
+import { CameraLagCheckPanel } from './CameraLagCheckPanel.tsx'
 import { CameraPanel } from './CameraPanel.tsx'
 import { LayerList } from './LayerList.tsx'
 import { LagCheckPanel } from './LagCheckPanel.tsx'
@@ -104,6 +105,7 @@ export default function App() {
       <MicPanel />
       <CameraPanel />
       <LagCheckPanel />
+      <CameraLagCheckPanel />
       <ProjectFilePanel />
       <SampleButtons />
       <SetupControls />
