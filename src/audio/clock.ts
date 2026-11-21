@@ -145,6 +145,7 @@ export interface TakeTiming {
   stepSeconds: number
   stepsInLoop: number
   stepsPerBar: number
+  stepsPerClick: number // metronome click spacing on the 16th grid
 }
 
 // For recording (SPEC 1.3): always starts from the very beginning, so the
@@ -171,6 +172,7 @@ export function playForTake(): TakeTiming {
     stepSeconds: getTicksPerStep() * secondsPerTick,
     stepsInLoop: layoutLoopBars * layoutStepsPerBar,
     stepsPerBar: layoutStepsPerBar,
+    stepsPerClick: layoutStepsPerBar / meter.clicksPerBar,
   }
 }
 

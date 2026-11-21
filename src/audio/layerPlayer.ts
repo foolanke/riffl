@@ -5,6 +5,7 @@
 import * as Tone from 'tone'
 import { getProject } from '../project/projectStore.ts'
 import { getLoopStepAtTime, getTicksPerStep } from './clock.ts'
+import { isLayerSilencedAt } from './recorder.ts'
 import { playDrum } from './samples.ts'
 
 let initialized = false
@@ -25,7 +26,7 @@ function handleStepTime(time: number): void {
     return // count-in: no layers play
   }
   for (const layer of getProject().layers) {
-    if (layer.muted) {
+    if (layer.muted || isLayerSilencedAt(layer.id, time)) {
       continue
     }
     if (layer.hits.includes(step)) {

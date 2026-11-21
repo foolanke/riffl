@@ -2,13 +2,20 @@
 import { useEffect, useState } from 'react'
 import { startAudio, playTestBeep } from '../audio/audioEngine.ts'
 import { play, stop } from '../audio/clock.ts'
-import { getProject, toggleLayerMutedByIndex, updateSettings } from '../project/projectStore.ts'
+import {
+  getProject,
+  toggleLayerMutedByIndex,
+  undoLastTake,
+  updateSettings,
+} from '../project/projectStore.ts'
 import { BeatDisplay } from './BeatDisplay.tsx'
+import { CameraPanel } from './CameraPanel.tsx'
 import { LayerList } from './LayerList.tsx'
 import { LagCheckPanel } from './LagCheckPanel.tsx'
 import { MicPanel } from './MicPanel.tsx'
+import { ProjectFilePanel } from './ProjectFilePanel.tsx'
 import { RecordPanel } from './RecordPanel.tsx'
-import { recordTake } from '../audio/recorder.ts'
+import { getRecorderState, recordTake } from '../audio/recorder.ts'
 import { SampleButtons } from './SampleButtons.tsx'
 import { SetupControls } from './SetupControls.tsx'
 import { useIsPlaying } from './hooks.ts'
@@ -30,7 +37,7 @@ export default function App() {
     }
   }
 
-  // Keyboard shortcuts (SPEC 0.6). Space, M and 1-9 so far.
+  // Keyboard shortcuts (SPEC 0.6): Space, Z, 1-9, M.
   useEffect(function () {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === ' ') {
@@ -50,6 +57,10 @@ export default function App() {
       }
       if (/^[1-9]$/.test(event.key)) {
         toggleLayerMutedByIndex(Number(event.key) - 1)
+      }
+      // Undo only between takes, never while one is being recorded.
+      if ((event.key === 'z' || event.key === 'Z') && getRecorderState().status === 'idle') {
+        undoLastTake()
       }
     }
     // Buttons fire on Space key-up, so block that too.
@@ -91,7 +102,9 @@ export default function App() {
       <RecordPanel />
       <LayerList />
       <MicPanel />
+      <CameraPanel />
       <LagCheckPanel />
+      <ProjectFilePanel />
       <SampleButtons />
       <SetupControls />
     </div>
