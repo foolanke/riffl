@@ -12,9 +12,12 @@ const MODEL_URL = import.meta.env.BASE_URL + 'models/hand_landmarker.task'
 const MAX_HANDS = 2
 
 // A point on the camera image: 0..1 from left to right and top to bottom.
+// z is MediaPipe's depth relative to the wrist (smaller = closer to the
+// camera), on roughly the same scale as x. Only hand points have it.
 export interface HandPoint {
   x: number
   y: number
+  z?: number
 }
 
 // The user's real left or right hand.
@@ -26,11 +29,16 @@ export interface HandFrame {
   time: number // performance.now() in ms when the camera captured the frame
   hands: HandPoint[][]
   sides: HandSide[]
+  aspect: number // camera image width / height, for measuring real distances
 }
 
 let landmarker: HandLandmarker | null = null
 let trackingStarted = false
-let latestFrame: HandFrame = { time: 0, hands: [], sides: [] }
+let latestFrame: HandFrame = { time: 0, hands: [], sides: [], aspect: 16 / 9 }
+
+// Called on every new tracking result, e.g. live melody (step 26), so the
+// engine reacts per camera frame, not per screen redraw.
+const frameListeners = new Set<(frame: HandFrame) => void>()
 
 // Frames saved during a take for camera confirmation (step 23).
 let recordedFrames: HandFrame[] = []
@@ -88,7 +96,7 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
     for (const handLandmarks of result.landmarks) {
       const points: HandPoint[] = []
       for (const landmark of handLandmarks) {
-        points.push({ x: landmark.x, y: landmark.y })
+        points.push({ x: landmark.x, y: landmark.y, z: landmark.z })
       }
       hands.push(points)
     }
@@ -96,9 +104,13 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
     // When the camera took the picture, if the browser knows. This matters
     // for matching hands to mic hits: the frame reaches us tens of ms later.
     const captureTime = metadata.captureTime !== undefined ? metadata.captureTime : now
-    latestFrame = { time: captureTime, hands: hands, sides: sides }
+    const aspect = video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 16 / 9
+    latestFrame = { time: captureTime, hands: hands, sides: sides, aspect: aspect }
     if (isRecordingFrames) {
       recordedFrames.push(latestFrame)
+    }
+    for (const listener of frameListeners) {
+      listener(latestFrame)
     }
     countFrame(now)
   }
@@ -148,6 +160,13 @@ export function stopRecordingHands(): HandFrame[] {
   const frames = recordedFrames
   recordedFrames = []
   return frames
+}
+
+export function onHandFrame(listener: (frame: HandFrame) => void): () => void {
+  frameListeners.add(listener)
+  return function unsubscribe() {
+    frameListeners.delete(listener)
+  }
 }
 
 // ---- For the screen ----

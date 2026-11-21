@@ -56,6 +56,7 @@ export interface GuideHand {
   column: number // 0 = left column, 2 = right column (screen)
   palm: HandPoint // camera coordinates
   fingers: GuideFinger[]
+  points: HandPoint[] // all 21 tracked points, for pinch detection
 }
 
 // Column each hand was in on the last frame, for the dead zone.
@@ -85,7 +86,13 @@ export function getGuideHands(frame: HandFrame): GuideHand[] {
 
     const palm = getPalmCenter(points)
     const column = updateColumn(side, 1 - palm.x)
-    guideHands.push({ side: side, column: column, palm: palm, fingers: getFingers(points, side, column) })
+    guideHands.push({
+      side: side,
+      column: column,
+      palm: palm,
+      fingers: getFingers(points, side, column),
+      points: points,
+    })
   }
 
   // A hand that left the picture starts fresh when it comes back.

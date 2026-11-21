@@ -7,18 +7,22 @@
 //
 // Melody guide (step 25, SPEC 3.2, 3.3, 3.9): the 3 note columns, and the
 // note name on each fingertip for the column that hand is in.
+// Live notes (step 26, SPEC 3.4, 3.6): the playing notes shown large, the
+// pinched fingertip highlighted, and a pinch-distance readout for tuning.
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { PointerEvent } from 'react'
 import { DRUMS, getDrumLabel } from '../audio/drums.ts'
 import type { DrumName } from '../audio/drums.ts'
+import { getHeldNote, getLastPinchDistances, setLiveMelodyOn } from '../audio/liveMelody.ts'
 import { getRecorderState, selectObjectForTake, subscribeToRecorder } from '../audio/recorder.ts'
 import { addObject, deleteObject, getProject, setObjectDrum } from '../project/projectStore.ts'
 import type { Box } from '../project/projectStore.ts'
 import { startCamera } from '../vision/camera.ts'
 import { getLatestHandFrame, getTrackingFps, startHandTracking } from '../vision/handTracking.ts'
-import type { HandFrame, HandPoint } from '../vision/handTracking.ts'
+import type { HandFrame, HandPoint, HandSide } from '../vision/handTracking.ts'
 import { COLUMN_COUNT, getColumnRangeLabel, getGuideHands } from '../vision/melodyGuide.ts'
 import { MIN_BOX_SIZE, findObjectAtPoint, isHandInBox, makeBoxFromCorners } from '../vision/objects.ts'
+import { PINCH_PRESS_DISTANCE, PINCH_RELEASE_DISTANCE } from '../vision/pinch.ts'
 import { useProject } from './hooks.ts'
 
 const DISPLAY_WIDTH = 640
@@ -37,6 +41,7 @@ export function CameraPanel() {
   const videoHolderRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fpsRef = useRef<HTMLSpanElement>(null)
+  const pinchReadoutRef = useRef<HTMLSpanElement>(null)
   // The box being dragged, in camera-image coordinates. A ref so the draw
   // loop sees it without re-rendering on every mouse move.
   const dragRef = useRef<{ start: HandPoint; current: HandPoint } | null>(null)
@@ -140,6 +145,9 @@ export function CameraPanel() {
         if (fpsRef.current) {
           fpsRef.current.textContent = String(getTrackingFps())
         }
+        if (pinchReadoutRef.current) {
+          pinchReadoutRef.current.textContent = getPinchReadout()
+        }
         frameId = requestAnimationFrame(draw)
       }
       frameId = requestAnimationFrame(draw)
@@ -186,11 +194,16 @@ export function CameraPanel() {
             checked={showMelodyGuide}
             onChange={(event) => {
               setShowMelodyGuide(event.target.checked)
+              setLiveMelodyOn(event.target.checked)
               event.target.blur()
             }}
           />{' '}
-          Show melody guide (note columns and fingertip notes)
+          Melody: guide and live notes (pinch thumb to a finger to play)
         </label>
+      </p>
+      <p>
+        Pinch distance (press below {PINCH_PRESS_DISTANCE}, release above {PINCH_RELEASE_DISTANCE}):{' '}
+        <span ref={pinchReadoutRef} style={{ fontFamily: 'monospace' }} />
       </p>
       <div
         style={{
@@ -332,6 +345,7 @@ function drawMelodyGuide(context: CanvasRenderingContext2D, width: number, heigh
   }
 
   for (const hand of getGuideHands(frame)) {
+    const heldNote = getHeldNote(hand.side)
     // Which hand the app thinks this is, so a mix-up is easy to spot.
     context.font = 'bold 14px sans-serif'
     const sideText = hand.side === 'left' ? 'LEFT hand' : 'RIGHT hand'
@@ -340,19 +354,64 @@ function drawMelodyGuide(context: CanvasRenderingContext2D, width: number, heigh
     context.font = 'bold 15px sans-serif'
     for (const finger of hand.fingers) {
       // Just above the fingertip, so the label doesn't cover the finger.
-      drawLabel(context, finger.pitch, (1 - finger.tip.x) * width, finger.tip.y * height - 18, 'yellow')
+      // The pinched finger turns green.
+      const isPinched = heldNote !== null && heldNote.finger === finger.finger
+      const color = isPinched ? 'lime' : 'yellow'
+      drawLabel(context, finger.pitch, (1 - finger.tip.x) * width, finger.tip.y * height - 18, color)
     }
+  }
+
+  // The notes playing right now, large (SPEC 3.9). Left hand's note on
+  // the left, right hand's on the right, like on screen.
+  const playing: string[] = []
+  for (const side of ['left', 'right'] as HandSide[]) {
+    const heldNote = getHeldNote(side)
+    if (heldNote !== null) {
+      playing.push(heldNote.pitch)
+    }
+  }
+  if (playing.length > 0) {
+    context.font = 'bold 48px sans-serif'
+    drawLabel(context, playing.join('  '), width / 2, 40, 'lime', 56)
   }
   context.textAlign = 'left'
 }
 
+// "L index 0.92 middle 1.10 ... | R ..." for tuning the pinch thresholds.
+function getPinchReadout(): string {
+  const parts: string[] = []
+  for (const side of ['left', 'right'] as HandSide[]) {
+    const distances = getLastPinchDistances(side)
+    const name = side === 'left' ? 'L' : 'R'
+    if (distances === null) {
+      parts.push(name + ' -')
+    } else {
+      parts.push(
+        `${name} index ${distances.index.toFixed(2)} middle ${distances.middle.toFixed(2)} ` +
+          `ring ${distances.ring.toFixed(2)} pinky ${distances.pinky.toFixed(2)}`,
+      )
+    }
+  }
+  return parts.join(' | ')
+}
+
 // Centered text on a dark background so it reads over any video.
-function drawLabel(context: CanvasRenderingContext2D, text: string, centerX: number, centerY: number, color: string) {
+// boxHeight should be a little more than the font size.
+function drawLabel(
+  context: CanvasRenderingContext2D,
+  text: string,
+  centerX: number,
+  centerY: number,
+  color: string,
+  boxHeight: number = 20,
+) {
   const textWidth = context.measureText(text).width
   context.fillStyle = 'rgba(0, 0, 0, 0.7)'
-  context.fillRect(centerX - textWidth / 2 - 4, centerY - 11, textWidth + 8, 20)
+  context.fillRect(centerX - textWidth / 2 - 4, centerY - boxHeight / 2, textWidth + 8, boxHeight)
   context.fillStyle = color
-  context.fillText(text, centerX, centerY + 5)
+  context.textBaseline = 'middle'
+  context.fillText(text, centerX, centerY)
+  context.textBaseline = 'alphabetic'
 }
 
 // A box in camera coordinates as a rectangle on the mirrored screen.
