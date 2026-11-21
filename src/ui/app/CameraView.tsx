@@ -1,8 +1,10 @@
 // Camera panel (design.md 3.1, 3.2): the live mirrored webcam with the HUD
 // strip on top, and the hint pill at the bottom. While a melody layer is
-// active: the melody guide and the piano overlay (design.md 4.3).
+// active: the melody guide and the piano overlay (design.md 4.3). While a
+// drum layer is active: the object markers (design.md 4.2), passed in.
 // The engine owns the <video> (vision/camera.ts); this just shows it.
 import { useEffect, useRef } from 'react'
+import type { ReactNode } from 'react'
 import { getCameraVideo } from '../../vision/camera.ts'
 import { MelodyGuide } from './MelodyGuide.tsx'
 import { PianoOverlay } from './PianoOverlay.tsx'
@@ -12,6 +14,7 @@ interface CameraViewProps {
   hintText: string | null // null = no hint pill
   cameraOk: boolean
   melodyActive: boolean // show the melody guide and piano overlay
+  objectMarkers?: ReactNode // drum layer: object boxes (ObjectMarkers.tsx)
 }
 
 export function CameraView(props: CameraViewProps) {
@@ -45,6 +48,9 @@ export function CameraView(props: CameraViewProps) {
         <span className="text-label">{props.hudLabel}</span>
         <div className="tick" />
       </div>
+
+      {/* Above the HUD, below the hint pill (design.md 3.2 stacking order). */}
+      {props.objectMarkers}
 
       {props.melodyActive ? <PianoOverlay /> : null}
 

@@ -12,22 +12,36 @@
 // The old step-by-step test page stays at /test.html, unchanged.
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { selectInstrument, setLiveMelodyOn } from '../../audio/liveMelody.ts'
-import { getRecorderState, recordTake, setTakeDrum, setTakeKind, subscribeToRecorder } from '../../audio/recorder.ts'
 import {
+  getRecorderState,
+  recordTake,
+  selectObjectForTake,
+  setTakeDrum,
+  setTakeKind,
+  subscribeToRecorder,
+} from '../../audio/recorder.ts'
+import {
+  addObject,
+  deleteObject,
   deleteLayer,
+  findObject,
   getProject,
   setLayerDrum,
+  setLayerObject,
+  setObjectDrum,
   setLayerInstrument,
   toggleLayerMutedByIndex,
   undoLastTake,
   updateSettings,
 } from '../../project/projectStore.ts'
+import type { Box } from '../../project/projectStore.ts'
 import { downloadProjectFile } from '../../project/saveLoad.ts'
 import { useProject } from '../hooks.ts'
 import { getCameraLagCheckState, subscribeToCameraLagCheck } from '../../audio/cameraLagCheck.ts'
 import { getLagCheckState, subscribeToLagCheck } from '../../audio/lagCheck.ts'
 import { BrandBadge } from './BrandBadge.tsx'
 import { CalibrationSection, getCalibrationHint } from './CalibrationSection.tsx'
+import { CameraConfirmToggle } from './CameraConfirmToggle.tsx'
 import { CameraView } from './CameraView.tsx'
 import { ICONS } from './icons.ts'
 import { LayerCard } from './LayerCard.tsx'
@@ -35,6 +49,7 @@ import { LayersPanel } from './LayersPanel.tsx'
 import { buildLayerItems, findItem, getItemSound, isMelodyItem } from './layerItems.ts'
 import type { DraftLayer, LayerItem, LayerSound } from './layerItems.ts'
 import { MetronomeStrip } from './MetronomeStrip.tsx'
+import { ObjectMarkers } from './ObjectMarkers.tsx'
 import { SettingsSection } from './SettingsSection.tsx'
 import { StartOverlay } from './StartOverlay.tsx'
 
@@ -49,6 +64,9 @@ export function RifflApp() {
   const [drafts, setDrafts] = useState<DraftLayer[]>([])
   const [activeKey, setActiveKey] = useState<string | null>(null)
   const [recordingKey, setRecordingKey] = useState<string | null>(null)
+  // Draft card key -> the object its take will be played on (step 24).
+  // Recorded drum layers keep theirs in the project (layer.objectId).
+  const [draftObjects, setDraftObjects] = useState<Record<string, string>>({})
   const project = useProject()
   const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
   const micCheck = useSyncExternalStore(subscribeToLagCheck, getLagCheckState)
@@ -117,7 +135,12 @@ export function RifflApp() {
     }
     if (sound.kind === 'drum') {
       setTakeKind('drum')
-      setTakeDrum(sound.drum) // also clears any chosen object: mic-only for now
+      const objectId = getLinkedObjectId(item, draftObjects)
+      if (objectId !== null) {
+        selectObjectForTake(objectId) // the take uses this object's box (camera confirmation) and drum
+      } else {
+        setTakeDrum(sound.drum) // no object: mic only
+      }
     } else {
       selectInstrument(sound.instrument) // a new melody take uses the selected instrument
       setTakeKind('melody')
@@ -151,6 +174,69 @@ export function RifflApp() {
     } else if (item.layer && item.layer.type === 'melody' && sound.kind === 'melody') {
       setLayerInstrument(item.layer.id, sound.instrument)
     }
+    // A card and its object always play the same drum.
+    const objectId = getLinkedObjectId(item, draftObjects)
+    if (objectId !== null && sound.kind === 'drum') {
+      setObjectDrum(objectId, sound.drum)
+    }
+  }
+
+  // ---- Objects (SPEC 1.2, steps 21-24): one active drum card <-> one object ----
+
+  // Link an object (or none = mic only) to a drum card. Picking an object
+  // sets the card's drum to the object's drum (step 24).
+  function linkObject(item: LayerItem, objectId: string | null) {
+    const object = findObject(objectId)
+    if (item.draft) {
+      const draftKey = item.draft.key
+      if (object) {
+        const objectDrum = object.drum
+        setDrafts(function (current) {
+          return current.map(function (draft) {
+            return draft.key === draftKey ? { key: draftKey, sound: { kind: 'drum', drum: objectDrum } } : draft
+          })
+        })
+      }
+      setDraftObjects(function (current) {
+        const updated = { ...current }
+        if (object) {
+          updated[draftKey] = object.id
+        } else {
+          delete updated[draftKey]
+        }
+        return updated
+      })
+      selectObjectForTake(object ? object.id : null)
+    } else if (item.layer && item.layer.type === 'drum') {
+      setLayerObject(item.layer.id, object ? object.id : null)
+      if (object && object.drum !== item.layer.drum) {
+        setLayerDrum(item.layer.id, object.drum)
+      }
+    }
+  }
+
+  function handleObjectDrawn(box: Box) {
+    const sound = activeItem ? getItemSound(activeItem) : null
+    if (!activeItem || !sound || sound.kind !== 'drum') {
+      return
+    }
+    const id = crypto.randomUUID()
+    addObject({ id: id, drum: sound.drum, box: box })
+    linkObject(activeItem, id)
+  }
+
+  function handleObjectSelected(objectId: string | null) {
+    if (activeItem) {
+      linkObject(activeItem, objectId)
+    }
+  }
+
+  // Cards linked to a deleted object fall back to mic only (findObject finds nothing).
+  function handleObjectDeleted(objectId: string) {
+    if (getRecorderState().takeObjectId === objectId) {
+      selectObjectForTake(null)
+    }
+    deleteObject(objectId)
   }
 
   // Delete a card (SPEC 1.6): a recorded layer leaves the project, a draft
@@ -256,7 +342,24 @@ export function RifflApp() {
   return (
     <div className="page">
       <div className="main">
-        <CameraView hudLabel={hudLabel} hintText={hintText} cameraOk={cameraOk} melodyActive={melodyActive} />
+        <CameraView
+          hudLabel={hudLabel}
+          hintText={hintText}
+          cameraOk={cameraOk}
+          melodyActive={melodyActive}
+          objectMarkers={
+            // Object boxes only for a drum card (none on a melody card, design.md 4.3).
+            activeItem !== null && !melodyActive && cameraOk ? (
+              <ObjectMarkers
+                linkedObjectId={getLinkedObjectId(activeItem, draftObjects)}
+                editable={recorder.status === 'idle'}
+                onDraw={handleObjectDrawn}
+                onSelect={handleObjectSelected}
+                onDelete={handleObjectDeleted}
+              />
+            ) : null
+          }
+        />
         <LayersPanel items={items} onAddLayer={handleAddLayer} />
       </div>
 
@@ -291,6 +394,7 @@ export function RifflApp() {
 
         <SettingsSection />
 
+        <CameraConfirmToggle />
         <CalibrationSection cameraOk={cameraOk} />
 
         <div className="sidebar-footer">
@@ -313,6 +417,18 @@ export function RifflApp() {
       </aside>
     </div>
   )
+}
+
+// The object a drum card's take is played on, or null (mic only).
+function getLinkedObjectId(item: LayerItem, draftObjects: Record<string, string>): string | null {
+  let objectId: string | undefined = undefined
+  if (item.draft) {
+    objectId = draftObjects[item.draft.key]
+  } else if (item.layer && item.layer.type === 'drum') {
+    objectId = item.layer.objectId
+  }
+  const object = findObject(objectId)
+  return object ? object.id : null
 }
 
 // A take and a lag check both use the clock and mic, so never run both at once.

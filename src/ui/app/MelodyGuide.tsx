@@ -35,7 +35,7 @@ const SIDES: HandSide[] = ['left', 'right']
 
 // How the camera image sits in the panel: mirrored, and scaled to cover it
 // (object-fit: cover), so part of the image may be cut off.
-interface ImageFit {
+export interface ImageFit {
   offsetX: number
   offsetY: number
   width: number
@@ -197,7 +197,7 @@ function drawPill(
   context.textBaseline = 'alphabetic'
 }
 
-function getImageFit(panelWidth: number, panelHeight: number): ImageFit {
+export function getImageFit(panelWidth: number, panelHeight: number): ImageFit {
   const video = getCameraVideo()
   if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
     return { offsetX: 0, offsetY: 0, width: panelWidth, height: panelHeight }
