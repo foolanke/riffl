@@ -54,6 +54,13 @@ let layoutStepsPerBar = 16
 let repeatEventId: number | null = null
 let lastSettings: ProjectSettings | null = null
 
+// Slow-speed takes (team extra, not in SPEC): during the take the transport
+// runs at tempo x speed, then jumps back to full tempo exactly at the loop
+// end. Layers are stored in steps, not seconds, so a take recorded slowly
+// simply plays back at full speed. Until this audio time, project changes
+// must not reset the tempo (that would speed up the take halfway).
+let slowTakeUntilTime = 0
+
 let clickSynth: Tone.Synth | null = null
 let clickVolume: Tone.Volume | null = null
 
@@ -84,7 +91,9 @@ export function initClock(): void {
 
 // Settings that can change mid-loop without restarting.
 function applyLiveSettings(settings: ProjectSettings): void {
-  Tone.getTransport().bpm.value = settings.tempoBpm
+  if (Tone.now() >= slowTakeUntilTime) {
+    Tone.getTransport().bpm.value = settings.tempoBpm
+  }
   if (clickVolume) {
     clickVolume.volume.value = volumeToDecibels(settings.metronomeVolume)
   }
@@ -130,6 +139,7 @@ export function play(): void {
     return
   }
   const settings = getProject().settings
+  endSlowTake(settings.tempoBpm)
   applyLoopLayout(settings, settings.countInBars)
 
   const transport = Tone.getTransport()
@@ -150,25 +160,36 @@ export interface TakeTiming {
 
 // For recording (SPEC 1.3): always starts from the very beginning, so the
 // count-in plays, then the loop. Returns when the loop will start.
-// Assumes the tempo does not change during the take.
-export function playForTake(): TakeTiming {
+// speed < 1 = slow-speed take: count-in and the recorded loop run at
+// tempo x speed, and full tempo comes back exactly at the loop end.
+// All returned times are in real seconds at the take's (slow) speed.
+export function playForTake(speed: number): TakeTiming {
   const transport = Tone.getTransport()
   transport.stop()
   Tone.getDraw().cancel()
 
   const settings = getProject().settings
   applyLoopLayout(settings, settings.countInBars)
+  const takeBpm = settings.tempoBpm * speed
+  endSlowTake(takeBpm)
 
   // Start slightly in the future so the start time is known exactly.
   const startTime = Tone.now() + 0.05
+  const secondsPerTick = 60 / (takeBpm * transport.PPQ)
+  const ticksPerBar = getTicksPerBar()
+  const loopStartTime = startTime + layoutCountInBars * ticksPerBar * secondsPerTick
+  const loopSeconds = layoutLoopBars * ticksPerBar * secondsPerTick
+  if (speed !== 1) {
+    // Back to full speed right as the new layer starts looping.
+    transport.bpm.setValueAtTime(settings.tempoBpm, loopStartTime + loopSeconds)
+    slowTakeUntilTime = loopStartTime + loopSeconds
+  }
   transport.start(startTime)
   setPlaying(true)
 
-  const secondsPerTick = 60 / (settings.tempoBpm * transport.PPQ)
-  const ticksPerBar = getTicksPerBar()
   return {
-    loopStartTime: startTime + layoutCountInBars * ticksPerBar * secondsPerTick,
-    loopSeconds: layoutLoopBars * ticksPerBar * secondsPerTick,
+    loopStartTime: loopStartTime,
+    loopSeconds: loopSeconds,
     stepSeconds: getTicksPerStep() * secondsPerTick,
     stepsInLoop: layoutLoopBars * layoutStepsPerBar,
     stepsPerBar: layoutStepsPerBar,
@@ -176,10 +197,19 @@ export function playForTake(): TakeTiming {
   }
 }
 
+// Cancels any pending speed change and sets the tempo now.
+function endSlowTake(bpm: number): void {
+  const transport = Tone.getTransport()
+  slowTakeUntilTime = 0
+  transport.bpm.cancelScheduledValues(0)
+  transport.bpm.value = bpm
+}
+
 export function stop(): void {
   if (!isPlaying) {
     return
   }
+  endSlowTake(getProject().settings.tempoBpm) // a stopped slow take must not stay slow
   Tone.getTransport().stop()
   Tone.getDraw().cancel()
   setPlaying(false)

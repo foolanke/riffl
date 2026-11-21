@@ -31,7 +31,9 @@ function handleStepTime(time: number): void {
   if (step === null) {
     return // count-in: no layers play
   }
-  const stepSeconds = Tone.Time(getTicksPerStep() + 'i').toSeconds()
+  // A 16th at the tempo at this exact time (a slow take changes tempo
+  // right at the loop end, so the current tempo could be the wrong one).
+  const stepSeconds = 15 / Tone.getTransport().bpm.getValueAtTime(time)
   for (const layer of getProject().layers) {
     if (layer.muted || isLayerSilencedAt(layer.id, time)) {
       continue
