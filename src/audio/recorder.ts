@@ -11,9 +11,20 @@
 //
 // Retake (step 17): records a take for one existing layer and replaces
 // its hits. That layer is silent during its own retake.
+//
+// Camera confirmation (step 23, SPEC 1.4): hand positions are saved during
+// the take; afterwards a mic hit is kept only if a hand was inside the
+// take's object box around that moment. Runs after the take, so it never
+// delays playback.
+//
+// Object-based takes (step 24): selecting an object sets the drum, and
+// its box is the one checked by camera confirmation.
 import * as Tone from 'tone'
-import { addTakeLayer, getProject, replaceLayerHits } from '../project/projectStore.ts'
-import type { Layer } from '../project/projectStore.ts'
+import { addTakeLayer, findObject, getProject, replaceLayerHits } from '../project/projectStore.ts'
+import type { Box, Layer, TrackedObject } from '../project/projectStore.ts'
+import { isHandTrackingRunning, startRecordingHands, stopRecordingHands } from '../vision/handTracking.ts'
+import type { HandFrame } from '../vision/handTracking.ts'
+import { isHandInBox } from '../vision/objects.ts'
 import { buildRecording, waitUntilAudioTime } from './audioTiming.ts'
 import { playForTake } from './clock.ts'
 import type { TakeTiming } from './clock.ts'
@@ -39,6 +50,11 @@ const SPEAKER_LOUDNESS_FACTOR = 2
 // How much audio after a hit's start is used to measure its loudness.
 const HIT_PEAK_WINDOW_SECONDS = 0.01
 
+// Camera confirmation: a hand must be in the box within this many ms of
+// the mic hit (SPEC 1.4: roughly +-100ms). Covers camera frame spacing
+// and small timing differences between the camera and the mic.
+const HAND_WINDOW_MS = 100
+
 export type RecordStatus = 'idle' | 'countIn' | 'recording' | 'processing'
 
 export interface HitReport {
@@ -47,6 +63,7 @@ export interface HitReport {
   offsetMs: number // how early (-) or late (+) it was vs that step
   positionLabel: string // bar.beat.sixteenth, e.g. "1.2.1"
   ignoredAsSpeaker: boolean // true = probably the speakers, not a tap
+  ignoredNoHand: boolean // true = camera saw no hand at the object
 }
 
 export interface TakeReport {
@@ -61,6 +78,8 @@ export interface TakeReport {
 export interface RecorderState {
   status: RecordStatus
   takeDrum: DrumName
+  takeObjectId: string | null // object chosen for the next take (step 24)
+  cameraConfirmOn: boolean // SPEC 1.4 safety toggle
   muteLayersWhileRecording: boolean
   retakeLayerId: string | null // set while a retake is running
   lastTake: TakeReport | null
@@ -70,6 +89,8 @@ export interface RecorderState {
 let state: RecorderState = {
   status: 'idle',
   takeDrum: 'kick',
+  takeObjectId: null,
+  cameraConfirmOn: true,
   muteLayersWhileRecording: false,
   retakeLayerId: null,
   lastTake: null,
@@ -103,8 +124,23 @@ export function subscribeToRecorder(listener: () => void): () => void {
   }
 }
 
+// Picking a drum by hand means the take is no longer tied to an object.
 export function setTakeDrum(drum: DrumName): void {
-  setState({ takeDrum: drum })
+  setState({ takeDrum: drum, takeObjectId: null })
+}
+
+// Step 24: selecting an object sets the drum for the take. null = none.
+export function selectObjectForTake(objectId: string | null): void {
+  const object = findObject(objectId)
+  if (object) {
+    setState({ takeObjectId: object.id, takeDrum: object.drum })
+  } else {
+    setState({ takeObjectId: null })
+  }
+}
+
+export function setCameraConfirmOn(on: boolean): void {
+  setState({ cameraConfirmOn: on })
 }
 
 export function setMuteLayersWhileRecording(mute: boolean): void {
@@ -129,12 +165,29 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
 
   let drum = state.takeDrum
   let retakeLayer: Layer | null = null
+  let object: TrackedObject | null = findObject(state.takeObjectId)
   if (retakeLayerId !== undefined) {
     retakeLayer = findLayer(retakeLayerId)
     if (!retakeLayer) {
       return
     }
     drum = retakeLayer.drum
+    object = findObject(retakeLayer.objectId)
+  } else if (object) {
+    drum = object.drum // the object's drum may have been changed since selecting it
+  }
+
+  // Which box camera confirmation checks, or why it's skipped (mic only).
+  let confirmBox: Box | null = null
+  let confirmSkippedReason = ''
+  if (state.cameraConfirmOn) {
+    if (!object) {
+      confirmSkippedReason = 'no object chosen for this take'
+    } else if (!isHandTrackingRunning()) {
+      confirmSkippedReason = 'camera is off'
+    } else {
+      confirmBox = object.box
+    }
   }
 
   // Read once so the whole take uses the same values.
@@ -155,6 +208,7 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
     silenceUntilTime = Infinity
 
     startCapture()
+    startRecordingHands()
     const timing = playForTake()
     const loopEndTime = timing.loopStartTime + timing.loopSeconds
     silenceUntilTime = loopEndTime
@@ -167,7 +221,13 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
     setState({ status: 'processing' })
 
     const chunks = stopCapture()
-    const report = processTake(chunks, timing, drum, lagSeconds, postRollSeconds, speakerSteps)
+    const handFrames = stopRecordingHands()
+    // Safety: if tracking stalled and saved nothing, don't throw away every hit.
+    if (confirmBox && handFrames.length === 0) {
+      confirmBox = null
+      confirmSkippedReason = 'no camera frames were saved'
+    }
+    const report = processTake(chunks, timing, drum, lagSeconds, postRollSeconds, speakerSteps, confirmBox, handFrames)
     report.isRetake = retakeLayer !== null
 
     // Commit the result (undoable).
@@ -177,12 +237,20 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
     } else if (retakeLayer) {
       replaceLayerHits(retakeLayer.id, report.snappedSteps)
     } else {
-      addTakeLayer({ id: crypto.randomUUID(), drum: drum, hits: report.snappedSteps, muted: false })
+      const layer: Layer = { id: crypto.randomUUID(), drum: drum, hits: report.snappedSteps, muted: false }
+      if (object) {
+        layer.objectId = object.id
+      }
+      addTakeLayer(layer)
+    }
+    if (confirmSkippedReason) {
+      message = (message + ' Camera confirmation skipped (' + confirmSkippedReason + '), mic only.').trim()
     }
     setState({ status: 'idle', lastTake: report, retakeLayerId: null, message: message })
   } catch (error) {
     console.error(error)
     stopCapture()
+    stopRecordingHands()
     silenceUntilTime = 0
     setState({ status: 'idle', retakeLayerId: null, message: 'Recording failed: ' + String(error) })
   }
@@ -228,8 +296,13 @@ function processTake(
   lagSeconds: number,
   postRollSeconds: number,
   speakerSteps: Set<number>,
+  confirmBox: Box | null,
+  handFrames: HandFrame[],
 ): TakeReport {
   const sampleRate = Tone.getContext().sampleRate
+  // Converts audio-clock seconds to performance.now() ms (the camera's
+  // clock). Measured once; the two clocks don't drift apart within a take.
+  const audioToPerformanceMs = performance.now() - Tone.getContext().currentTime * 1000
 
   // Cut out the loop plus the pre/post roll, by exact frame number.
   const windowStartFrame = Math.round((timing.loopStartTime - PRE_ROLL_SECONDS) * sampleRate)
@@ -273,7 +346,15 @@ function processTake(
     const hitPeak = getPeakAfter(windowSamples, hitIndex, Math.round(HIT_PEAK_WINDOW_SECONDS * sampleRate))
     const ignoredAsSpeaker = nearSpeakerSound && hitPeak < threshold * SPEAKER_LOUDNESS_FACTOR
 
-    if (!ignoredAsSpeaker) {
+    // Camera confirmation (step 23). Uses the moment the mic heard the hit
+    // (no lag subtracted): that is closest to when the hand touched the object.
+    let ignoredNoHand = false
+    if (confirmBox) {
+      const micHeardMs = audioToPerformanceMs + ((windowStartFrame + hitIndex) / sampleRate) * 1000
+      ignoredNoHand = !wasHandInBoxNear(handFrames, confirmBox, micHeardMs)
+    }
+
+    if (!ignoredAsSpeaker && !ignoredNoHand) {
       keptHitTimes.push(hitTime)
     }
     hitReports.push({
@@ -282,6 +363,7 @@ function processTake(
       offsetMs: offsetSeconds * 1000,
       positionLabel: getPositionLabel(wrappedStep, timing.stepsPerBar),
       ignoredAsSpeaker: ignoredAsSpeaker,
+      ignoredNoHand: ignoredNoHand,
     })
   }
 
@@ -296,6 +378,16 @@ function processTake(
     hits: hitReports,
     snappedSteps: snappedSteps,
   }
+}
+
+// True if any saved camera frame within HAND_WINDOW_MS of the time shows a hand in the box.
+function wasHandInBoxNear(frames: HandFrame[], box: Box, timeMs: number): boolean {
+  for (const frame of frames) {
+    if (Math.abs(frame.time - timeMs) <= HAND_WINDOW_MS && isHandInBox(frame, box)) {
+      return true
+    }
+  }
+  return false
 }
 
 // Loudest absolute sample in [start, start + length).

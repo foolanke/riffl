@@ -1,5 +1,6 @@
-// Record a take (SPEC steps 12-17): drum dropdown, Record button (or Space),
-// mute-layers option, undo, status, raw playback, detected hits and result.
+// Record a take (SPEC steps 12-17, 23-24): drum dropdown, Record button (or Space),
+// mute-layers option, camera confirmation toggle, undo, status, raw playback,
+// detected hits and result.
 import { useSyncExternalStore } from 'react'
 import { DRUMS, getDrumLabel } from '../audio/drums.ts'
 import type { DrumName } from '../audio/drums.ts'
@@ -7,12 +8,14 @@ import {
   getRecorderState,
   playLastTake,
   recordTake,
+  setCameraConfirmOn,
   setMuteLayersWhileRecording,
   setTakeDrum,
   subscribeToRecorder,
 } from '../audio/recorder.ts'
 import type { RecordStatus } from '../audio/recorder.ts'
-import { undoLastTake } from '../project/projectStore.ts'
+import { findObject, undoLastTake } from '../project/projectStore.ts'
+import { useProject } from './hooks.ts'
 
 const STATUS_TEXT: Record<RecordStatus, string> = {
   idle: 'Ready. Press Space or click Record.',
@@ -25,6 +28,8 @@ export function RecordPanel() {
   const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
   const take = recorder.lastTake
   const isBusy = recorder.status !== 'idle'
+  useProject() // re-render when objects change, so the object text stays current
+  const takeObject = findObject(recorder.takeObjectId)
 
   let resultText = ''
   if (take && take.snappedSteps.length > 0) {
@@ -32,13 +37,24 @@ export function RecordPanel() {
     resultText = `${what}: ${getDrumLabel(take.drum)}, ${take.snappedSteps.length} hits on steps ${take.snappedSteps.join(', ')}`
   }
 
-  let ignoredCount = 0
+  let speakerCount = 0
+  let noHandCount = 0
   if (take) {
     for (const hit of take.hits) {
       if (hit.ignoredAsSpeaker) {
-        ignoredCount++
+        speakerCount++
+      }
+      if (hit.ignoredNoHand) {
+        noHandCount++
       }
     }
+  }
+  const ignoredParts: string[] = []
+  if (speakerCount > 0) {
+    ignoredParts.push(`${speakerCount} ignored as speaker sound`)
+  }
+  if (noHandCount > 0) {
+    ignoredParts.push(`${noHandCount} ignored, no hand at the object`)
   }
 
   return (
@@ -61,6 +77,7 @@ export function RecordPanel() {
             ))}
           </select>
         </label>{' '}
+        {takeObject ? '(from the chosen object) ' : '(no object chosen) '}
         <button onClick={() => recordTake()} disabled={isBusy}>
           Record (Space)
         </button>{' '}
@@ -81,6 +98,19 @@ export function RecordPanel() {
           Mute layers while recording (metronome only)
         </label>
       </p>
+      <p>
+        <label>
+          <input
+            type="checkbox"
+            checked={recorder.cameraConfirmOn}
+            onChange={(event) => {
+              setCameraConfirmOn(event.target.checked)
+              event.target.blur()
+            }}
+          />{' '}
+          Camera confirmation (keep only hits with a hand at the object; off = mic only)
+        </label>
+      </p>
       <p>{STATUS_TEXT[recorder.status]}</p>
       {recorder.message ? <p>{recorder.message}</p> : null}
 
@@ -93,7 +123,7 @@ export function RecordPanel() {
           </p>
           <p>
             Hits found: {take.hits.length}
-            {ignoredCount > 0 ? ` (${ignoredCount} ignored as speaker sound)` : ''}
+            {ignoredParts.length > 0 ? ` (${ignoredParts.join(', ')})` : ''}
           </p>
           <ol>
             {take.hits.map((hit, index) => (
@@ -102,6 +132,7 @@ export function RecordPanel() {
                 {hit.offsetMs >= 0 ? '+' : ''}
                 {hit.offsetMs.toFixed(0)} ms
                 {hit.ignoredAsSpeaker ? ' - IGNORED (speaker)' : ''}
+                {hit.ignoredNoHand ? ' - IGNORED (no hand at object)' : ''}
               </li>
             ))}
           </ol>

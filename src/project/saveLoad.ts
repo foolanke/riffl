@@ -19,7 +19,7 @@ import {
   replaceProject,
   subscribeToProject,
 } from './projectStore.ts'
-import type { Layer, Project, ProjectSettings } from './projectStore.ts'
+import type { Box, Layer, Project, ProjectSettings, TrackedObject } from './projectStore.ts'
 
 const STORAGE_KEY = 'sounds.project'
 
@@ -72,11 +72,13 @@ function parseProject(text: string): Project {
   }
   const defaults = createDefaultProject()
   const settingsData = isObject(data.settings) ? data.settings : {}
+  const objectsData = Array.isArray(data.objects) ? data.objects : []
   const layersData = Array.isArray(data.layers) ? data.layers : []
 
   return {
     version: PROJECT_VERSION,
     settings: parseSettings(settingsData, defaults.settings),
+    objects: parseObjects(objectsData),
     layers: parseLayers(layersData),
   }
 }
@@ -130,14 +132,50 @@ function parseLayers(data: unknown[]): Layer[] {
         hits.push(hit)
       }
     }
-    layers.push({
+    const layer: Layer = {
       id: typeof item.id === 'string' ? item.id : crypto.randomUUID(),
       drum: drum,
       hits: hits,
       muted: item.muted === true,
-    })
+    }
+    if (typeof item.objectId === 'string') {
+      layer.objectId = item.objectId
+    }
+    layers.push(layer)
   }
   return layers
+}
+
+function parseObjects(data: unknown[]): TrackedObject[] {
+  const objects: TrackedObject[] = []
+  for (const item of data) {
+    if (!isObject(item)) {
+      continue
+    }
+    const drum = findDrumName(item.drum)
+    const box = isObject(item.box) ? parseBox(item.box) : null
+    if (drum === null || box === null) {
+      continue
+    }
+    objects.push({
+      id: typeof item.id === 'string' ? item.id : crypto.randomUUID(),
+      drum: drum,
+      box: box,
+    })
+  }
+  return objects
+}
+
+// A box must lie inside the camera image (0..1) and have some size.
+function parseBox(data: Record<string, unknown>): Box | null {
+  const { x, y, width, height } = data
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') {
+    return null
+  }
+  if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > 1.0001 || y + height > 1.0001) {
+    return null
+  }
+  return { x: x, y: y, width: width, height: height }
 }
 
 function findDrumName(value: unknown): DrumName | null {

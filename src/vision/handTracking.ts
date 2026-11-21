@@ -19,13 +19,17 @@ export interface HandPoint {
 
 // One tracking result. Each hand is a list of 21 points (wrist, finger joints, tips).
 export interface HandFrame {
-  time: number // performance.now() in ms when the frame was processed
+  time: number // performance.now() in ms when the camera captured the frame
   hands: HandPoint[][]
 }
 
 let landmarker: HandLandmarker | null = null
 let trackingStarted = false
 let latestFrame: HandFrame = { time: 0, hands: [] }
+
+// Frames saved during a take for camera confirmation (step 23).
+let recordedFrames: HandFrame[] = []
+let isRecordingFrames = false
 
 // Frames per second, counted over the last second.
 let framesThisSecond = 0
@@ -43,9 +47,13 @@ export async function startHandTracking(video: HTMLVideoElement): Promise<void> 
     trackingStarted = false
     throw error
   }
-  video.requestVideoFrameCallback(function (now) {
-    handleVideoFrame(video, now)
+  video.requestVideoFrameCallback(function (now, metadata) {
+    handleVideoFrame(video, now, metadata)
   })
+}
+
+export function isHandTrackingRunning(): boolean {
+  return landmarker !== null
 }
 
 // GPU is much faster; fall back to CPU if this laptop can't do GPU.
@@ -68,7 +76,7 @@ async function createLandmarker(): Promise<HandLandmarker> {
 }
 
 // Called by the browser once for every new camera frame.
-function handleVideoFrame(video: HTMLVideoElement, now: number): void {
+function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoFrameCallbackMetadata): void {
   if (landmarker) {
     const result = landmarker.detectForVideo(video, now)
     const hands: HandPoint[][] = []
@@ -79,11 +87,17 @@ function handleVideoFrame(video: HTMLVideoElement, now: number): void {
       }
       hands.push(points)
     }
-    latestFrame = { time: now, hands: hands }
+    // When the camera took the picture, if the browser knows. This matters
+    // for matching hands to mic hits: the frame reaches us tens of ms later.
+    const captureTime = metadata.captureTime !== undefined ? metadata.captureTime : now
+    latestFrame = { time: captureTime, hands: hands }
+    if (isRecordingFrames) {
+      recordedFrames.push(latestFrame)
+    }
     countFrame(now)
   }
-  video.requestVideoFrameCallback(function (nextNow) {
-    handleVideoFrame(video, nextNow)
+  video.requestVideoFrameCallback(function (nextNow, nextMetadata) {
+    handleVideoFrame(video, nextNow, nextMetadata)
   })
 }
 
@@ -94,6 +108,20 @@ function countFrame(now: number): void {
     framesThisSecond = 0
     secondStartTime = now
   }
+}
+
+// ---- Saving frames during a take (step 23) ----
+
+export function startRecordingHands(): void {
+  recordedFrames = []
+  isRecordingFrames = true
+}
+
+export function stopRecordingHands(): HandFrame[] {
+  isRecordingFrames = false
+  const frames = recordedFrames
+  recordedFrames = []
+  return frames
 }
 
 // ---- For the screen ----
