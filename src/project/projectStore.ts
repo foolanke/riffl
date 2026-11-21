@@ -283,6 +283,27 @@ export function setLayerDrum(layerId: string, drum: DrumName): void {
   setProject({ ...currentProject, layers: updated })
 }
 
+// Change which object a recorded drum layer's retakes use for camera
+// confirmation (SPEC 1.4); null = mic only. Its hits stay the same.
+// Used by the designed page's object markers. Not undoable (undo is for takes, SPEC 1.6).
+export function setLayerObject(layerId: string, objectId: string | null): void {
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId && layer.type === 'drum') {
+      const changed: DrumLayer = { ...layer }
+      if (objectId === null) {
+        delete changed.objectId
+      } else {
+        changed.objectId = objectId
+      }
+      updated.push(changed)
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
 // Change which instrument a recorded melody layer plays; its notes stay the same.
 // Used by the designed page's layer card. Not undoable (undo is for takes, SPEC 1.6).
 export function setLayerInstrument(layerId: string, instrument: InstrumentName): void {
