@@ -1016,3 +1016,125 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ==== Object percussion (SPEC 1.2, 1.4, steps 21-24) ==== */
+
+/* Layer over the camera that takes the drag-to-draw mouse input and holds
+   the object markers. Positions inside are set per frame in layout pixels. */
+.object-layer {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+
+.object-layer.is-editable {
+  cursor: crosshair;
+}
+
+/* 5.17 Object marker: four corner brackets and a tag, no fill or outline. */
+.object-marker {
+  position: absolute;
+  /* Not the chosen object for the active card's next take: dimmed, like a
+     muted layer (design.md 8). The chosen one is shown at full strength. */
+  opacity: 0.4;
+}
+
+.object-marker.is-linked {
+  opacity: 1;
+}
+
+/* Hand inside the box (step 22; not designed, design.md 10 Q9): the box
+   fills with the piano's active-key colour. */
+.object-marker.is-hand-inside {
+  background: var(--color-key-active);
+}
+
+.object-corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.object-corner.is-tl {
+  top: 0;
+  left: 0;
+}
+
+.object-corner.is-tr {
+  top: 0;
+  right: 0;
+}
+
+.object-corner.is-bl {
+  bottom: 0;
+  left: 0;
+}
+
+.object-corner.is-br {
+  bottom: 0;
+  right: 0;
+}
+
+.object-tag {
+  position: absolute;
+  top: -32px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-small);
+  background: var(--color-fg);
+  color: var(--color-bg);
+  overflow: hidden;
+}
+
+/* Box near the top of the camera: tag below the box so it isn't cut off. */
+.object-marker.is-tag-below .object-tag {
+  top: auto;
+  bottom: -32px;
+}
+
+/* × that deletes the object (not designed): plain black text in the tag. */
+.object-tag-delete {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-bg);
+  cursor: pointer;
+}
+
+.object-tag-delete:hover {
+  opacity: 0.6;
+}
+
+/* The box being dragged (not designed): dashed white outline. */
+.object-draft {
+  position: absolute;
+  display: none;
+  border: 1px dashed var(--color-fg);
+  pointer-events: none;
+}
+
+.object-ripple {
+  pointer-events: none;
+}
+
+/* Camera confirmation toggle (SPEC 1.4; not designed, design.md 10 Q7):
+   the same box as the metronome strip. */
+.camera-confirm-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex-shrink: 0;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+.camera-confirm-strip.is-off .camera-confirm-name {
+  opacity: 0.4;
+}
