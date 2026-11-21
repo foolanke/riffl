@@ -3,21 +3,23 @@
 // audio/cameraLagCheck.ts); this section runs them and shows the saved result.
 // The design has no calibration screen yet (design.md 10, Q7), so each check
 // is a row in the style of the metronome strip (5.4) with a chip button.
-import { useState, useSyncExternalStore } from 'react'
-import { getCameraLagCheckState, runCameraLagCheck, subscribeToCameraLagCheck } from '../../audio/cameraLagCheck.ts'
-import { getLagCheckState, runLagCheck, subscribeToLagCheck } from '../../audio/lagCheck.ts'
-import { getRecorderState, subscribeToRecorder } from '../../audio/recorder.ts'
-import { getCameraVideo } from '../../vision/camera.ts'
-import { startHandTracking } from '../../vision/handTracking.ts'
+import { useState } from 'react'
+import { runCameraLagCheck } from '../../../audio/cameraLagCheck.ts'
+import { runLagCheck } from '../../../audio/lagCheck.ts'
+import { getCameraVideo } from '../../../vision/camera.ts'
+import { startHandTracking } from '../../../vision/handTracking.ts'
+import { Rule, SectionTitle } from '../components/Glyphs.tsx'
+import { releaseFocus } from '../components/releaseFocus.ts'
+import { useCameraLagCheck, useMicLagCheck, useRecorder } from '../hooks/engineState.ts'
 
 interface CalibrationSectionProps {
   cameraOk: boolean
 }
 
 export function CalibrationSection(props: CalibrationSectionProps) {
-  const micCheck = useSyncExternalStore(subscribeToLagCheck, getLagCheckState)
-  const cameraCheck = useSyncExternalStore(subscribeToCameraLagCheck, getCameraLagCheckState)
-  const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
+  const micCheck = useMicLagCheck()
+  const cameraCheck = useCameraLagCheck()
+  const recorder = useRecorder()
   const [loadingTracking, setLoadingTracking] = useState(false)
   const [cameraError, setCameraError] = useState('')
 
@@ -48,7 +50,7 @@ export function CalibrationSection(props: CalibrationSectionProps) {
 
   return (
     <div className="section calibration">
-      <div className="section-title text-label">Calibration</div>
+      <SectionTitle>Calibration</SectionTitle>
 
       <CalibrationRow
         name="Mic lag"
@@ -99,7 +101,7 @@ function CalibrationRow(props: CalibrationRowProps) {
     <div className="calibration-item">
       <div className="calibration-row">
         <span className="text-label">{props.name}</span>
-        <div className="metronome-rule" />
+        <Rule />
         <span className="text-label color-muted">{props.savedLagMs === null ? 'Not set' : props.savedLagMs + ' ms'}</span>
         <button
           className="chip-button text-item"
@@ -107,7 +109,7 @@ function CalibrationRow(props: CalibrationRowProps) {
           disabled={props.disabled}
           onClick={(event) => {
             props.onRun()
-            event.currentTarget.blur() // so Space doesn't press this again
+            releaseFocus(event.currentTarget)
           }}
         >
           {buttonLabel}
@@ -135,21 +137,4 @@ function getRunDetail(
     text += ` Run before: ${previousLagMs} ms.`
   }
   return text
-}
-
-// What the camera hint pill says while a check runs, or null if none is running.
-export function getCalibrationHint(micStatus: string, cameraStatus: string): string | null {
-  if (micStatus === 'listen' || cameraStatus === 'listen') {
-    return 'Calibrating. Listen to the first 4 clicks.'
-  }
-  if (micStatus === 'tap') {
-    return 'Tap the desk on every click.'
-  }
-  if (cameraStatus === 'pinch') {
-    return 'Pinch thumb to index on every click. Open your hand in between.'
-  }
-  if (micStatus === 'processing' || cameraStatus === 'processing') {
-    return 'Measuring...'
-  }
-  return null
 }

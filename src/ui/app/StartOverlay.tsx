@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { startAudio } from '../../audio/audioEngine.ts'
 import { startCamera } from '../../vision/camera.ts'
 import { startHandTracking } from '../../vision/handTracking.ts'
-import { BrandBadge } from './BrandBadge.tsx'
+import { BrandBadge } from './sidebar/BrandBadge.tsx'
 
 interface StartOverlayProps {
   // cameraOk = false if the camera couldn't be opened (the app still works, mic only).

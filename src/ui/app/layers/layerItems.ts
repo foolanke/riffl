@@ -1,13 +1,13 @@
 // The layer list the designed page shows: recorded layers from the project,
 // followed by draft layers (added with ADD LAYER but not recorded yet).
 // Drafts live only in the page; a take turns a draft into a real layer.
-import { getDrumLabel } from '../../audio/drums.ts'
-import type { DrumName } from '../../audio/drums.ts'
-import { getInstrumentLabel } from '../../audio/instruments.ts'
-import type { InstrumentName } from '../../audio/instruments.ts'
-import { getLayerSoundSteps } from '../../project/projectStore.ts'
-import type { Layer, ProjectSettings } from '../../project/projectStore.ts'
-import { getStepsPerBar } from '../../project/projectStore.ts'
+import { getDrumLabel } from '../../../audio/drums.ts'
+import type { DrumName } from '../../../audio/drums.ts'
+import { getInstrumentLabel } from '../../../audio/instruments.ts'
+import type { InstrumentName } from '../../../audio/instruments.ts'
+import { getLayerSoundSteps } from '../../../project/projectStore.ts'
+import type { Layer, ProjectSettings } from '../../../project/projectStore.ts'
+import { getStepsPerBar } from '../../../project/projectStore.ts'
 
 // What a layer plays: a drum sound (SPEC 1.7) or a melody instrument (SPEC 3.5).
 export type LayerSound = { kind: 'drum'; drum: DrumName } | { kind: 'melody'; instrument: InstrumentName }

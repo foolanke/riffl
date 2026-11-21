@@ -6,13 +6,12 @@
 // heard; we write straight to the DOM so React doesn't re-render per beat.
 //
 // TransportButtons: PLAY / STOP for the saved loop, and UNDO (same as Z).
-import { useEffect, useRef, useSyncExternalStore } from 'react'
-import { onBeat, play, stop } from '../../audio/clock.ts'
-import { getCameraLagCheckState, subscribeToCameraLagCheck } from '../../audio/cameraLagCheck.ts'
-import { getLagCheckState, subscribeToLagCheck } from '../../audio/lagCheck.ts'
-import { getRecorderState, subscribeToRecorder } from '../../audio/recorder.ts'
-import { undoLastTake } from '../../project/projectStore.ts'
-import { useIsPlaying, useProject } from '../hooks.ts'
+import { useEffect, useRef } from 'react'
+import { onBeat, play, stop } from '../../../audio/clock.ts'
+import { undoLastTake } from '../../../project/projectStore.ts'
+import { useIsPlaying, useProject } from '../../hooks.ts'
+import { OutlineButton } from '../components/OutlineButton.tsx'
+import { useCameraLagCheck, useMicLagCheck, useRecorder } from '../hooks/engineState.ts'
 
 const FLASH_MS = 100
 const STOPPED_TEXT = 'Stopped'
@@ -67,9 +66,9 @@ export function BeatReadout() {
 export function TransportButtons() {
   const isPlaying = useIsPlaying()
   const hasLayers = useProject().layers.length > 0
-  const recorder = useSyncExternalStore(subscribeToRecorder, getRecorderState)
-  const micCheck = useSyncExternalStore(subscribeToLagCheck, getLagCheckState)
-  const cameraCheck = useSyncExternalStore(subscribeToCameraLagCheck, getCameraLagCheckState)
+  const recorder = useRecorder()
+  const micCheck = useMicLagCheck()
+  const cameraCheck = useCameraLagCheck()
 
   // A take or a lag check drives the clock itself; play/stop would break it.
   const isTakeRunning = recorder.status !== 'idle'
@@ -77,33 +76,21 @@ export function TransportButtons() {
 
   return (
     <>
-      <button
-        className="button-outline text-item"
-        type="button"
+      <OutlineButton
         disabled={isTakeRunning || isCalibrating}
-        onClick={(event) => {
+        onClick={() => {
           if (isPlaying) {
             stop()
           } else {
             play()
           }
-          event.currentTarget.blur() // so Space records instead of pressing this
         }}
       >
         {isPlaying ? 'Stop' : 'Play'}
-      </button>
-      <button
-        className="button-outline text-item"
-        type="button"
-        title="Undo last take (Z)"
-        disabled={isTakeRunning || !hasLayers}
-        onClick={(event) => {
-          undoLastTake()
-          event.currentTarget.blur()
-        }}
-      >
+      </OutlineButton>
+      <OutlineButton title="Undo last take (Z)" disabled={isTakeRunning || !hasLayers} onClick={undoLastTake}>
         Undo
-      </button>
+      </OutlineButton>
     </>
   )
 }

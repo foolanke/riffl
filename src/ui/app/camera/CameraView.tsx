@@ -5,7 +5,9 @@
 // The engine owns the <video> (vision/camera.ts); this just shows it.
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { getCameraVideo } from '../../vision/camera.ts'
+import { getCameraVideo } from '../../../vision/camera.ts'
+import { HintPill } from './HintPill.tsx'
+import { HudStrip } from './HudStrip.tsx'
 import { MelodyGuide } from './MelodyGuide.tsx'
 import { PianoOverlay } from './PianoOverlay.tsx'
 
@@ -30,6 +32,8 @@ export function CameraView(props: CameraViewProps) {
     }
   }, [])
 
+  // Stacking order, bottom to top (design.md 3.2): video, guide, HUD,
+  // object markers, piano overlay, hint pill.
   return (
     <div className="camera">
       <div className="camera-video" ref={videoHolderRef} />
@@ -38,28 +42,11 @@ export function CameraView(props: CameraViewProps) {
           <span className="text-label color-muted">Camera unavailable. Drum takes still work with the mic.</span>
         </div>
       )}
-
       {props.melodyActive && props.cameraOk ? <MelodyGuide /> : null}
-
-      <div className="hud-strip">
-        <div className="tick" />
-        <span className="hud-session text-label">Session 01</span>
-        <div className="tick" />
-        <span className="text-label">{props.hudLabel}</span>
-        <div className="tick" />
-      </div>
-
-      {/* Above the HUD, below the hint pill (design.md 3.2 stacking order). */}
+      <HudStrip label={props.hudLabel} />
       {props.objectMarkers}
-
       {props.melodyActive ? <PianoOverlay /> : null}
-
-      {props.hintText !== null ? (
-        // Sits above the piano overlay when that is showing.
-        <div className={'hint-pill' + (props.melodyActive ? ' is-raised' : '')}>
-          <span className="text-label color-muted">{props.hintText}</span>
-        </div>
-      ) : null}
+      {props.hintText !== null ? <HintPill text={props.hintText} raised={props.melodyActive} /> : null}
     </div>
   )
 }

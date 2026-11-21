@@ -7,11 +7,12 @@
 // Drawn on a canvas every screen frame from the engine (hand tracking and
 // liveMelody), so React never re-renders per frame (SPEC 0.1).
 import { useEffect, useRef } from 'react'
-import { getHeldNote } from '../../audio/liveMelody.ts'
-import { getCameraVideo } from '../../vision/camera.ts'
-import { getLatestHandFrame } from '../../vision/handTracking.ts'
-import type { HandPoint, HandSide } from '../../vision/handTracking.ts'
-import { COLUMN_COUNT, getGuideHands } from '../../vision/melodyGuide.ts'
+import { getHeldNote } from '../../../audio/liveMelody.ts'
+import { getLatestHandFrame } from '../../../vision/handTracking.ts'
+import type { HandPoint, HandSide } from '../../../vision/handTracking.ts'
+import { COLUMN_COUNT, getGuideHands } from '../../../vision/melodyGuide.ts'
+import { getImageFit, imageToPanel } from './imageFit.ts'
+import type { ImageFit } from './imageFit.ts'
 
 // Token values (tokens.css). A canvas can't read CSS variables cheaply.
 const COLOR_FG = '#ffffff'
@@ -32,15 +33,6 @@ const BONES: [number, number][] = [
 ]
 
 const SIDES: HandSide[] = ['left', 'right']
-
-// How the camera image sits in the panel: mirrored, and scaled to cover it
-// (object-fit: cover), so part of the image may be cut off.
-export interface ImageFit {
-  offsetX: number
-  offsetY: number
-  width: number
-  height: number
-}
 
 export function MelodyGuide() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -107,13 +99,13 @@ function drawGuide(canvas: HTMLCanvasElement) {
   for (const hand of hands) {
     const held = getHeldNote(hand.side)
     // Which hand the app thinks this is, so a mix-up is easy to spot.
-    const palm = toScreen(hand.palm, fit)
+    const palm = imageToPanel(hand.palm, fit)
     drawPill(context, hand.side === 'left' ? 'LEFT' : 'RIGHT', palm.x, palm.y, COLOR_OVERLAY, COLOR_FG_MUTED, 4)
 
     for (const finger of hand.fingers) {
       // Just above the fingertip, so the label doesn't cover the finger.
       // The pinched finger is inverted (white pill, black text).
-      const tip = toScreen(finger.tip, fit)
+      const tip = imageToPanel(finger.tip, fit)
       const isPinched = held !== null && held.finger === finger.finger
       drawPill(
         context,
@@ -148,7 +140,7 @@ function drawGuide(canvas: HTMLCanvasElement) {
 function drawJoints(context: CanvasRenderingContext2D, points: HandPoint[], fit: ImageFit) {
   const screenPoints: { x: number; y: number }[] = []
   for (const point of points) {
-    screenPoints.push(toScreen(point, fit))
+    screenPoints.push(imageToPanel(point, fit))
   }
   context.strokeStyle = COLOR_FG
   context.globalAlpha = 0.5
@@ -195,20 +187,4 @@ function drawPill(
   context.fillText(text, centerX, centerY + 1)
   context.textAlign = 'left'
   context.textBaseline = 'alphabetic'
-}
-
-export function getImageFit(panelWidth: number, panelHeight: number): ImageFit {
-  const video = getCameraVideo()
-  if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
-    return { offsetX: 0, offsetY: 0, width: panelWidth, height: panelHeight }
-  }
-  const scale = Math.max(panelWidth / video.videoWidth, panelHeight / video.videoHeight)
-  const width = video.videoWidth * scale
-  const height = video.videoHeight * scale
-  return { offsetX: (panelWidth - width) / 2, offsetY: (panelHeight - height) / 2, width: width, height: height }
-}
-
-// A camera-image point (0-1) on the mirrored, cover-fitted screen.
-function toScreen(point: HandPoint, fit: ImageFit): { x: number; y: number } {
-  return { x: fit.offsetX + (1 - point.x) * fit.width, y: fit.offsetY + point.y * fit.height }
 }

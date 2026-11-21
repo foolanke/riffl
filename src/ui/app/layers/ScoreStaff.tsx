@@ -4,9 +4,9 @@
 //   with a barline between bars;
 // - notes outside E4-G5 (the designed staff) show only their name;
 // - a held note shows at its start; two notes starting together show the lower.
-import type { MelodyLayer, ProjectSettings } from '../../project/projectStore.ts'
-import { getStepsPerBar } from '../../project/projectStore.ts'
-import noteHead from './icons/note-head.svg'
+import type { MelodyLayer, ProjectSettings } from '../../../project/projectStore.ts'
+import { getStepsPerBar } from '../../../project/projectStore.ts'
+import { ICONS } from '../icons.ts'
 
 const WHITE_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 // White keys counted from C0, so E4 = 30 and G5 = 39.
@@ -85,7 +85,7 @@ function NoteGlyph(props: { pitch: string }) {
     <>
       {onStaff ? (
         <>
-          <img className="score-head" src={noteHead} alt="" style={{ top: centerY - 4 }} />
+          <img className="score-head" src={ICONS.noteHead} alt="" style={{ top: centerY - 4 }} />
           <div
             className={'score-stem' + (stemUp ? ' is-up' : ' is-down')}
             style={{ top: stemUp ? centerY - STEM_HEIGHT : centerY }}

@@ -1,0 +1,51 @@
+/* Calibration rows in the sidebar. */
+
+/* ---- Calibration (not in the design yet: built from 5.4 and the BPM chip) ---- */
+
+.section.calibration {
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.calibration-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Same box as the metronome strip. */
+.calibration-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+/* Same look as the BPM chip. */
+.chip-button {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--radius-small);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.chip-button:hover:not(:disabled) {
+  background: #555555;
+}
+
+.chip-button:disabled {
+  color: var(--color-line);
+  cursor: default;
+}
+
+.calibration-note {
+  margin: 0;
+  padding: 0 8px;
+  white-space: normal;
+}

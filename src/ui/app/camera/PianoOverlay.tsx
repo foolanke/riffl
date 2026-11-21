@@ -6,11 +6,11 @@
 // Keys and ripples are updated every screen frame straight on the DOM,
 // reading the engine (liveMelody), so React never re-renders per frame.
 import { useEffect, useRef } from 'react'
-import { getHeldNote, getPlayingInstrument } from '../../audio/liveMelody.ts'
-import { moveByWhiteKeys } from '../../audio/instruments.ts'
-import type { InstrumentName } from '../../audio/instruments.ts'
-import type { HandSide } from '../../vision/handTracking.ts'
-import tapRipple from './icons/tap-ripple.svg'
+import { getHeldNote, getPlayingInstrument } from '../../../audio/liveMelody.ts'
+import { moveByWhiteKeys } from '../../../audio/instruments.ts'
+import type { InstrumentName } from '../../../audio/instruments.ts'
+import type { HandSide } from '../../../vision/handTracking.ts'
+import { ICONS } from '../icons.ts'
 
 const OCTAVES = [4, 5, 6]
 const WHITE_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
@@ -126,7 +126,7 @@ function addRipple(overlay: HTMLDivElement, layer: HTMLDivElement | null, pitch:
   const centerX = OVERLAY_BORDER + OVERLAY_PADDING + octaveIndex * (octaveWidth + OCTAVE_GAP) + (keyIndex + 0.5) * keyWidth
 
   const ripple = document.createElement('img')
-  ripple.src = tapRipple
+  ripple.src = ICONS.tapRipple
   ripple.alt = ''
   ripple.className = 'tap-ripple'
   ripple.style.left = centerX + 'px'
