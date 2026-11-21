@@ -20,8 +20,8 @@
 // Object-based takes (step 24): selecting an object sets the drum, and
 // its box is the one checked by camera confirmation.
 import * as Tone from 'tone'
-import { addTakeLayer, findObject, getProject, replaceLayerHits } from '../project/projectStore.ts'
-import type { Box, Layer, TrackedObject } from '../project/projectStore.ts'
+import { addTakeLayer, findObject, getLayerSoundSteps, getProject, replaceTakeLayer } from '../project/projectStore.ts'
+import type { Box, DrumLayer, Layer, TrackedObject } from '../project/projectStore.ts'
 import { isHandTrackingRunning, startRecordingHands, stopRecordingHands } from '../vision/handTracking.ts'
 import type { HandFrame } from '../vision/handTracking.ts'
 import { isHandInBox } from '../vision/objects.ts'
@@ -164,13 +164,19 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
   }
 
   let drum = state.takeDrum
-  let retakeLayer: Layer | null = null
+  let retakeLayer: DrumLayer | null = null
   let object: TrackedObject | null = findObject(state.takeObjectId)
   if (retakeLayerId !== undefined) {
-    retakeLayer = findLayer(retakeLayerId)
-    if (!retakeLayer) {
+    const layer = findLayer(retakeLayerId)
+    if (!layer) {
       return
     }
+    // Melody takes (and their retakes) arrive in step 29.
+    if (layer.type !== 'drum') {
+      setState({ message: 'Melody retakes are not built yet (step 29).' })
+      return
+    }
+    retakeLayer = layer
     drum = retakeLayer.drum
     object = findObject(retakeLayer.objectId)
   } else if (object) {
@@ -235,9 +241,15 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
     if (report.snappedSteps.length === 0) {
       message = retakeLayer ? 'No hits found, so the old layer was kept.' : 'No hits found, so no layer was added.'
     } else if (retakeLayer) {
-      replaceLayerHits(retakeLayer.id, report.snappedSteps)
+      replaceTakeLayer({ ...retakeLayer, hits: report.snappedSteps })
     } else {
-      const layer: Layer = { id: crypto.randomUUID(), drum: drum, hits: report.snappedSteps, muted: false }
+      const layer: DrumLayer = {
+        type: 'drum',
+        id: crypto.randomUUID(),
+        drum: drum,
+        hits: report.snappedSteps,
+        muted: false,
+      }
       if (object) {
         layer.objectId = object.id
       }
@@ -266,7 +278,8 @@ function findLayer(layerId: string): Layer | null {
 }
 
 // Steps in the loop where the app itself makes a sound during this take:
-// unmuted, unsilenced layers, plus metronome clicks if the metronome is on.
+// unmuted, unsilenced layers (drum hits and melody note starts), plus
+// metronome clicks if the metronome is on.
 function getStepsPlayedBySpeakers(timing: TakeTiming): Set<number> {
   const project = getProject()
   const steps = new Set<number>()
@@ -275,7 +288,7 @@ function getStepsPlayedBySpeakers(timing: TakeTiming): Set<number> {
     if (layer.muted || silenced) {
       continue
     }
-    for (const step of layer.hits) {
+    for (const step of getLayerSoundSteps(layer)) {
       if (step < timing.stepsInLoop) {
         steps.add(step)
       }
