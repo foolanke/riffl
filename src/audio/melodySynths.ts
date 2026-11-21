@@ -6,9 +6,11 @@
 // One voice per hand per instrument (SPEC 3.4: one note per hand), so
 // both hands can hold the same pitch (e.g. C5 from either column) and
 // releasing one hand never cuts the other's note.
-// Offline rule (SPEC 0.2): piano and 808 samples are in public/samples/.
+// Offline rule (SPEC 0.2): guitar, piano and 808 samples are in public/samples/.
+// Every chain ends on the melody bus, which pumps with the kick (masterBus.ts).
 import * as Tone from 'tone'
 import { INSTRUMENTS } from './instruments.ts'
+import { getMelodyBus } from './masterBus.ts'
 import type { InstrumentName } from './instruments.ts'
 import type { HandSide } from '../vision/handTracking.ts'
 
@@ -22,9 +24,13 @@ export interface MelodyVoice {
 interface NotePlayer {
   triggerAttack(notes: string[], time: number): unknown
   triggerRelease(notes: string[], time: number): unknown
+  triggerAttackRelease(notes: string[], duration: number, time: number): unknown
 }
 
 const voices = new Map<InstrumentName, Record<HandSide, MelodyVoice>>()
+// Recorded melody layers (step 29) play on their own player per
+// instrument, so loop playback never cuts off a note you're playing live.
+const layerPlayers = new Map<InstrumentName, NotePlayer>()
 // Each instrument's effects, built once and shared by both hands.
 const chainInputs = new Map<InstrumentName, Tone.ToneAudioNode>()
 
@@ -38,8 +44,17 @@ export async function loadMelodyInstruments(): Promise<void> {
       left: makeVoice(createNotePlayer(instrument.name)),
       right: makeVoice(createNotePlayer(instrument.name)),
     })
+    layerPlayers.set(instrument.name, createNotePlayer(instrument.name))
   }
   await Tone.loaded()
+}
+
+// Plays one recorded note (all the notes of one gesture) for a set time.
+export function playMelodyNotes(instrument: InstrumentName, notes: string[], durationSeconds: number, time: number): void {
+  const player = layerPlayers.get(instrument)
+  if (player) {
+    player.triggerAttackRelease(notes, durationSeconds, time)
+  }
 }
 
 export function getMelodyVoice(instrument: InstrumentName, side: HandSide): MelodyVoice | null {
@@ -71,14 +86,29 @@ function makeVoice(player: NotePlayer): MelodyVoice {
 function createNotePlayer(instrument: InstrumentName): NotePlayer {
   const output = getChainInput(instrument)
   if (instrument === 'pluck') {
-    // I Gotta Feeling's opening repeated chords: bright saws with a quick
-    // decay and no sustain, so every hit is a short pluck.
-    const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'fatsawtooth', count: 3, spread: 20 },
-      envelope: { attack: 0.002, decay: 0.3, sustain: 0, release: 0.2 },
+    // I Gotta Feeling's intro is a clean electric guitar, so the pluck is
+    // real guitar samples. A short release keeps it plucky: let go of the
+    // pinch and the string is damped.
+    const sampler = new Tone.Sampler({
+      urls: {
+        C3: 'C3.mp3',
+        'D#3': 'Ds3.mp3',
+        'F#3': 'Fs3.mp3',
+        A3: 'A3.mp3',
+        C4: 'C4.mp3',
+        'D#4': 'Ds4.mp3',
+        'F#4': 'Fs4.mp3',
+        A4: 'A4.mp3',
+        C5: 'C5.mp3',
+        'D#5': 'Ds5.mp3',
+        'F#5': 'Fs5.mp3',
+        A5: 'A5.mp3',
+        C6: 'C6.mp3',
+      },
+      baseUrl: import.meta.env.BASE_URL + 'samples/guitar/',
+      release: 0.15,
     }).connect(output)
-    synth.volume.value = -6
-    return synth
+    return sampler
   }
   if (instrument === 'pad') {
     // Warm and slow: soft attack, long release, wide detune.
@@ -135,13 +165,13 @@ function createNotePlayer(instrument: InstrumentName): NotePlayer {
     return synth
   }
   if (instrument === 'chordPad') {
-    // Full triads for the G - C - Em loop: pad-like, but a faster attack
-    // so chords can be played in rhythm.
+    // Supersaw: the big, wide house chords after the intro. Seven detuned
+    // saws per note, spread wide; a fast attack so chords play in rhythm.
     const synth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'fatsawtooth', count: 3, spread: 30 },
-      envelope: { attack: 0.03, decay: 0.3, sustain: 0.7, release: 0.6 },
+      oscillator: { type: 'fatsawtooth', count: 7, spread: 50 },
+      envelope: { attack: 0.01, decay: 0.3, sustain: 0.8, release: 0.4 },
     }).connect(output)
-    synth.volume.value = -12 // three notes per pinch
+    synth.volume.value = -16 // four notes x seven saws per pinch
     return synth
   }
   // bass808: the 808 drum sample, pitched to the note. The sample is
@@ -167,39 +197,49 @@ function getChainInput(instrument: InstrumentName): Tone.ToneAudioNode {
 
 function buildChain(instrument: InstrumentName): Tone.ToneAudioNode {
   if (instrument === 'pluck') {
-    // The intro's plucks ring out through a 1/8 echo.
-    const volume = new Tone.Volume(-10).toDestination()
-    const reverb = new Tone.Reverb({ decay: 1.5, wet: 0.2 }).connect(volume)
-    const echo = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.25, wet: 0.2 }).connect(reverb)
-    return new Tone.Filter({ type: 'lowpass', frequency: 3000, Q: 1 }).connect(echo)
+    // The intro guitar rings out through a strong dotted-1/8 echo (the
+    // classic pop guitar delay), plus a little room. A gentle low cut keeps
+    // it clear of the bass.
+    const volume = new Tone.Volume(-2).connect(getMelodyBus())
+    const reverb = new Tone.Reverb({ decay: 1.6, wet: 0.18 }).connect(volume)
+    const echo = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.35, wet: 0.3 }).connect(reverb)
+    return new Tone.Filter({ type: 'highpass', frequency: 150, Q: 0.7 }).connect(echo)
   }
-  if (instrument === 'pad' || instrument === 'chordPad') {
+  if (instrument === 'chordPad') {
+    // Bright and wide: chorus for width, a high cutoff so it shines,
+    // a medium room so it fills the space without washing out.
+    const volume = new Tone.Volume(-6).connect(getMelodyBus())
+    const reverb = new Tone.Reverb({ decay: 2.5, wet: 0.3 }).connect(volume)
+    const chorus = new Tone.Chorus({ frequency: 1.2, delayTime: 4, depth: 0.7, wet: 0.4 }).connect(reverb)
+    chorus.start()
+    return new Tone.Filter({ type: 'lowpass', frequency: 6000, Q: 0.5 }).connect(chorus)
+  }
+  if (instrument === 'pad') {
     // Chorus widens it, a darker filter and a bigger room make it warm.
-    const volume = new Tone.Volume(instrument === 'pad' ? -10 : -8).toDestination()
+    const volume = new Tone.Volume(-10).connect(getMelodyBus())
     const reverb = new Tone.Reverb({ decay: 3, wet: 0.35 }).connect(volume)
     const chorus = new Tone.Chorus({ frequency: 1.5, delayTime: 3.5, depth: 0.6, wet: 0.5 }).connect(reverb)
     chorus.start()
-    const cutoff = instrument === 'pad' ? 1800 : 2500
-    return new Tone.Filter({ type: 'lowpass', frequency: cutoff, Q: 0.7 }).connect(chorus)
+    return new Tone.Filter({ type: 'lowpass', frequency: 1800, Q: 0.7 }).connect(chorus)
   }
   if (instrument === 'synthLead') {
     // Same chain as step 26.
-    const volume = new Tone.Volume(-10).toDestination()
+    const volume = new Tone.Volume(-10).connect(getMelodyBus())
     const reverb = new Tone.Reverb({ decay: 1.8, wet: 0.2 }).connect(volume)
     const echo = new Tone.FeedbackDelay({ delayTime: '8n', feedback: 0.2, wet: 0.15 }).connect(reverb)
     return new Tone.Filter({ type: 'lowpass', frequency: 4000, Q: 1 }).connect(echo)
   }
   if (instrument === 'piano') {
-    const volume = new Tone.Volume(-4).toDestination()
+    const volume = new Tone.Volume(-4).connect(getMelodyBus())
     return new Tone.Reverb({ decay: 2, wet: 0.15 }).connect(volume)
   }
   if (instrument === 'bass') {
     // Dry: reverb on bass turns to mud.
-    return new Tone.Volume(-6).toDestination()
+    return new Tone.Volume(-6).connect(getMelodyBus())
   }
   // bass808: same character as the 808 drum (samples.ts): light
   // saturation so it's heard on laptop speakers, then a long, wet reverb.
-  const volume = new Tone.Volume(-6).toDestination()
+  const volume = new Tone.Volume(-6).connect(getMelodyBus())
   const reverb = new Tone.Reverb({ decay: 5, preDelay: 0.02, wet: 0.45 }).connect(volume)
   return new Tone.Distortion({ distortion: 0.25, wet: 0.4 }).connect(reverb)
 }

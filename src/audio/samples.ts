@@ -5,6 +5,7 @@
 // chain (deep and heavy reverb) so the reverb never touches the others.
 import * as Tone from 'tone'
 import { DRUMS } from './drums.ts'
+import { pumpAt } from './masterBus.ts'
 import type { DrumName } from './drums.ts'
 
 // 808: played slower = lower and longer (about 3 semitones down, from
@@ -72,4 +73,7 @@ export function playDrum(name: DrumName, time?: number): void {
     return
   }
   players.player(name).start(startTime)
+  if (name === 'kick') {
+    pumpAt(startTime) // house pump on the melody (masterBus.ts)
+  }
 }

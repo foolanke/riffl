@@ -19,12 +19,14 @@ import type { InstrumentName } from '../audio/instruments.ts'
 import {
   getHeldNote,
   getLastPinchDistances,
+  getLiveTakeMode,
+  getPlayingInstrument,
   getSelectedInstrument,
   selectInstrument,
   setLiveMelodyOn,
   subscribeToInstrument,
 } from '../audio/liveMelody.ts'
-import { getRecorderState, selectObjectForTake, subscribeToRecorder } from '../audio/recorder.ts'
+import { getRecorderState, selectObjectForTake, setTakeKind, subscribeToRecorder } from '../audio/recorder.ts'
 import { addObject, deleteObject, getProject, setObjectDrum } from '../project/projectStore.ts'
 import type { Box } from '../project/projectStore.ts'
 import { startCamera } from '../vision/camera.ts'
@@ -215,8 +217,10 @@ export function CameraPanel() {
           Instrument:{' '}
           <select
             value={instrument}
+            disabled={recorder.status !== 'idle'} // a take's instrument is fixed
             onChange={(event) => {
               selectInstrument(event.target.value as InstrumentName)
+              setTakeKind('melody') // Space now records a melody take
               event.target.blur() // so Space records instead of opening the list
             }}
           >
@@ -302,7 +306,8 @@ function drawOverlay(
   context.clearRect(0, 0, width, height)
   const frame = getLatestHandFrame()
 
-  if (showMelodyGuide) {
+  // A melody take plays even with the checkbox off, so show the guide too.
+  if (showMelodyGuide || getLiveTakeMode() === 'melody') {
     drawMelodyGuide(context, width, height, frame)
   }
   const selectedId = getRecorderState().takeObjectId
@@ -405,7 +410,7 @@ function drawMelodyGuide(context: CanvasRenderingContext2D, width: number, heigh
   // The selected instrument (SPEC 3.9), top left.
   context.font = 'bold 16px sans-serif'
   context.textAlign = 'left'
-  const instrumentText = 'Instrument: ' + getInstrumentLabel(getSelectedInstrument())
+  const instrumentText = 'Instrument: ' + getInstrumentLabel(getPlayingInstrument())
   const textWidth = context.measureText(instrumentText).width
   context.fillStyle = 'rgba(0, 0, 0, 0.7)'
   context.fillRect(6, 6, textWidth + 12, 24)
