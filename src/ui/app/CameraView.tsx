@@ -1,13 +1,17 @@
 // Camera panel (design.md 3.1, 3.2): the live mirrored webcam with the HUD
-// strip on top, and the hint pill at the bottom.
+// strip on top, and the hint pill at the bottom. While a melody layer is
+// active: the melody guide and the piano overlay (design.md 4.3).
 // The engine owns the <video> (vision/camera.ts); this just shows it.
 import { useEffect, useRef } from 'react'
 import { getCameraVideo } from '../../vision/camera.ts'
+import { MelodyGuide } from './MelodyGuide.tsx'
+import { PianoOverlay } from './PianoOverlay.tsx'
 
 interface CameraViewProps {
   hudLabel: string // "SETUP / CAMERA" or "LAYER 01 / SNARE"
   hintText: string | null // null = no hint pill
   cameraOk: boolean
+  melodyActive: boolean // show the melody guide and piano overlay
 }
 
 export function CameraView(props: CameraViewProps) {
@@ -32,6 +36,8 @@ export function CameraView(props: CameraViewProps) {
         </div>
       )}
 
+      {props.melodyActive && props.cameraOk ? <MelodyGuide /> : null}
+
       <div className="hud-strip">
         <div className="tick" />
         <span className="hud-session text-label">Session 01</span>
@@ -40,8 +46,11 @@ export function CameraView(props: CameraViewProps) {
         <div className="tick" />
       </div>
 
+      {props.melodyActive ? <PianoOverlay /> : null}
+
       {props.hintText !== null ? (
-        <div className="hint-pill">
+        // Sits above the piano overlay when that is showing.
+        <div className={'hint-pill' + (props.melodyActive ? ' is-raised' : '')}>
           <span className="text-label color-muted">{props.hintText}</span>
         </div>
       ) : null}
