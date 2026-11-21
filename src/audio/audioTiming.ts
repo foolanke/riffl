@@ -35,3 +35,14 @@ export function buildRecording(
   }
   return output
 }
+
+// Camera frames are timed on performance.now() (ms); sounds on the audio
+// clock (seconds). This converts camera time to audio-clock time.
+// Measured once per call; the two clocks don't drift apart within a take.
+// Same conversion as camera confirmation in recorder.ts. The camera lag
+// check and melody takes (step 29) must both use this, so the measured
+// lag matches what it corrects.
+export function performanceMsToAudioTime(performanceMs: number): number {
+  const audioToPerformanceMs = performance.now() - Tone.getContext().currentTime * 1000
+  return (performanceMs - audioToPerformanceMs) / 1000
+}

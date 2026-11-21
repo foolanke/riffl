@@ -157,20 +157,45 @@ export async function runLagCheck(): Promise<void> {
 
 // Average the delays, ignoring stray taps, and save the result.
 function finishCheck(delays: number[]): void {
+  const summary = summarizeDelays(delays, OUTLIER_SECONDS)
+  if (summary.goodCount < MIN_GOOD_TAPS) {
+    setState({
+      status: 'idle',
+      message: `Only ${summary.goodCount} clear taps heard (need ${MIN_GOOD_TAPS}). Tap firmly on every click, or raise the mic sensitivity, then try again.`,
+    })
+    return
+  }
+
+  const lagMs = Math.round(summary.averageSeconds * 1000)
+  saveLagMs(lagMs)
+  setState({
+    status: 'idle',
+    previousLagMs: state.savedLagMs,
+    savedLagMs: lagMs,
+    tapsUsed: summary.goodCount,
+    spreadMs: Math.round(summary.spreadSeconds * 1000),
+    message: '',
+  })
+}
+
+export interface DelaySummary {
+  goodCount: number // delays kept after dropping outliers
+  averageSeconds: number
+  spreadSeconds: number // standard deviation of the kept delays
+}
+
+// Shared with the camera lag check (step 28): drop delays further than
+// outlierSeconds from the median (stray taps), then average the rest.
+export function summarizeDelays(delays: number[], outlierSeconds: number): DelaySummary {
   const median = getMedian(delays)
   const goodDelays: number[] = []
   for (const delay of delays) {
-    if (Math.abs(delay - median) <= OUTLIER_SECONDS) {
+    if (Math.abs(delay - median) <= outlierSeconds) {
       goodDelays.push(delay)
     }
   }
-
-  if (goodDelays.length < MIN_GOOD_TAPS) {
-    setState({
-      status: 'idle',
-      message: `Only ${goodDelays.length} clear taps heard (need ${MIN_GOOD_TAPS}). Tap firmly on every click, or raise the mic sensitivity, then try again.`,
-    })
-    return
+  if (goodDelays.length === 0) {
+    return { goodCount: 0, averageSeconds: 0, spreadSeconds: 0 }
   }
 
   let sum = 0
@@ -185,16 +210,7 @@ function finishCheck(delays: number[]): void {
   }
   const spread = Math.sqrt(squaredSum / goodDelays.length)
 
-  const lagMs = Math.round(average * 1000)
-  saveLagMs(lagMs)
-  setState({
-    status: 'idle',
-    previousLagMs: state.savedLagMs,
-    savedLagMs: lagMs,
-    tapsUsed: goodDelays.length,
-    spreadMs: Math.round(spread * 1000),
-    message: '',
-  })
+  return { goodCount: goodDelays.length, averageSeconds: average, spreadSeconds: spread }
 }
 
 function getMedian(values: number[]): number {
