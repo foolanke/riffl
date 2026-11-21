@@ -19,21 +19,34 @@
 //
 // Object-based takes (step 24): selecting an object sets the drum, and
 // its box is the one checked by camera confirmation.
+//
+// Melody takes (step 29, SPEC 3.7): the same timeline (count-in, exactly
+// one loop, stops on its own, layer loops right away), but the input is
+// the camera instead of the mic: every pinch/release is logged, shifted by
+// the camera lag (3.8) and snapped to the 16th grid. Mute-while-recording,
+// undo, retake and save all go through the same code as drum layers.
+// Space records whatever was picked last: an instrument -> melody take,
+// a drum or object -> drum take.
 import * as Tone from 'tone'
 import { addTakeLayer, findObject, getLayerSoundSteps, getProject, replaceTakeLayer } from '../project/projectStore.ts'
-import type { Box, DrumLayer, Layer, TrackedObject } from '../project/projectStore.ts'
+import type { Box, DrumLayer, Layer, MelodyLayer, MelodyNote, TrackedObject } from '../project/projectStore.ts'
 import { isHandTrackingRunning, startRecordingHands, stopRecordingHands } from '../vision/handTracking.ts'
 import type { HandFrame } from '../vision/handTracking.ts'
 import { isHandInBox } from '../vision/objects.ts'
-import { buildRecording, waitUntilAudioTime } from './audioTiming.ts'
+import { buildRecording, performanceMsToAudioTime, waitUntilAudioTime } from './audioTiming.ts'
+import { getCameraLagSeconds } from './cameraLagCheck.ts'
 import { playForTake } from './clock.ts'
 import type { TakeTiming } from './clock.ts'
 import type { DrumName } from './drums.ts'
 import { decibelsToAmplitude, findHitsInSamples } from './hitDetection.ts'
+import type { InstrumentName } from './instruments.ts'
 import { getLagSeconds } from './lagCheck.ts'
+import { getSelectedInstrument, setLiveMelodyTakeMode, startNoteLog, stopNoteLog } from './liveMelody.ts'
+import type { RecordedNote } from './liveMelody.ts'
 import { getHitThresholdDb, startCapture, startMic, stopCapture } from './mic.ts'
 import type { CapturedChunk } from './recorderWorklet.ts'
-import { snapHitsToSteps, wrapStep } from './snapping.ts'
+import { snapHitsToSteps, snapMelodyNotes, wrapStep } from './snapping.ts'
+import type { TimedNote } from './snapping.ts'
 
 // Extra audio kept around the loop, so a hit played slightly early on
 // beat 1 is not cut off. Hits arrive late by the measured lag, so the
@@ -75,25 +88,49 @@ export interface TakeReport {
   snappedSteps: number[]
 }
 
+// One recorded note before snapping, for the take report.
+export interface NoteReport {
+  pitch: string
+  startMs: number // from the loop start, camera lag already subtracted
+  endMs: number
+}
+
+export interface MelodyTakeReport {
+  instrument: InstrumentName
+  isRetake: boolean
+  cameraLagMs: number
+  notes: NoteReport[] // kept notes, before snapping
+  snappedNotes: MelodyNote[]
+}
+
+// What Space records next.
+export type TakeKind = 'drum' | 'melody'
+
 export interface RecorderState {
   status: RecordStatus
+  takeKind: TakeKind
   takeDrum: DrumName
   takeObjectId: string | null // object chosen for the next take (step 24)
   cameraConfirmOn: boolean // SPEC 1.4 safety toggle
   muteLayersWhileRecording: boolean
   retakeLayerId: string | null // set while a retake is running
   lastTake: TakeReport | null
+  lastMelodyTake: MelodyTakeReport | null
+  lastTakeKind: TakeKind | null // which of the two reports is newer
   message: string
 }
 
 let state: RecorderState = {
   status: 'idle',
+  takeKind: 'drum',
   takeDrum: 'kick',
   takeObjectId: null,
   cameraConfirmOn: true,
   muteLayersWhileRecording: false,
   retakeLayerId: null,
   lastTake: null,
+  lastMelodyTake: null,
+  lastTakeKind: null,
   message: '',
 }
 const listeners = new Set<() => void>()
@@ -126,14 +163,22 @@ export function subscribeToRecorder(listener: () => void): () => void {
 
 // Picking a drum by hand means the take is no longer tied to an object.
 export function setTakeDrum(drum: DrumName): void {
-  setState({ takeDrum: drum, takeObjectId: null })
+  setState({ takeDrum: drum, takeObjectId: null, takeKind: 'drum' })
+}
+
+// Picking an instrument makes the next take a melody take, picking a drum
+// or object makes it a drum take (whatever was picked last wins).
+export function setTakeKind(kind: TakeKind): void {
+  if (state.status === 'idle') {
+    setState({ takeKind: kind })
+  }
 }
 
 // Step 24: selecting an object sets the drum for the take. null = none.
 export function selectObjectForTake(objectId: string | null): void {
   const object = findObject(objectId)
   if (object) {
-    setState({ takeObjectId: object.id, takeDrum: object.drum })
+    setState({ takeObjectId: object.id, takeDrum: object.drum, takeKind: 'drum' })
   } else {
     setState({ takeObjectId: null })
   }
@@ -158,25 +203,34 @@ export function isLayerSilencedAt(layerId: string, time: number): boolean {
 // ---- Recording ----
 
 // New take, or a retake of one layer if retakeLayerId is given.
+// A retake records the same kind as the layer (drum or melody).
 export async function recordTake(retakeLayerId?: string): Promise<void> {
   if (state.status !== 'idle') {
     return
   }
-
-  let drum = state.takeDrum
-  let retakeLayer: DrumLayer | null = null
-  let object: TrackedObject | null = findObject(state.takeObjectId)
   if (retakeLayerId !== undefined) {
     const layer = findLayer(retakeLayerId)
     if (!layer) {
       return
     }
-    // Melody takes (and their retakes) arrive in step 29.
-    if (layer.type !== 'drum') {
-      setState({ message: 'Melody retakes are not built yet (step 29).' })
-      return
+    if (layer.type === 'melody') {
+      await recordMelodyTake(layer)
+    } else {
+      await recordDrumTake(layer)
     }
-    retakeLayer = layer
+  } else if (state.takeKind === 'melody') {
+    await recordMelodyTake(null)
+  } else {
+    await recordDrumTake(null)
+  }
+}
+
+// ---- Drum takes (steps 12-24) ----
+
+async function recordDrumTake(retakeLayer: DrumLayer | null): Promise<void> {
+  let drum = state.takeDrum
+  let object: TrackedObject | null = findObject(state.takeObjectId)
+  if (retakeLayer) {
     drum = retakeLayer.drum
     object = findObject(retakeLayer.objectId)
   } else if (object) {
@@ -207,6 +261,8 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
       message: '',
       retakeLayerId: retakeLayer ? retakeLayer.id : null,
     })
+    // Live melody stays silent, so a stray pinch can't record as a hit.
+    setLiveMelodyTakeMode('drum', null)
 
     // Silence layers from now until the end of the recorded loop.
     silenceAllLayers = state.muteLayersWhileRecording
@@ -228,6 +284,7 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
 
     const chunks = stopCapture()
     const handFrames = stopRecordingHands()
+    setLiveMelodyTakeMode('none', null)
     // Safety: if tracking stalled and saved nothing, don't throw away every hit.
     if (confirmBox && handFrames.length === 0) {
       confirmBox = null
@@ -258,15 +315,139 @@ export async function recordTake(retakeLayerId?: string): Promise<void> {
     if (confirmSkippedReason) {
       message = (message + ' Camera confirmation skipped (' + confirmSkippedReason + '), mic only.').trim()
     }
-    setState({ status: 'idle', lastTake: report, retakeLayerId: null, message: message })
+    setState({ status: 'idle', lastTake: report, lastTakeKind: 'drum', retakeLayerId: null, message: message })
   } catch (error) {
     console.error(error)
     stopCapture()
     stopRecordingHands()
+    setLiveMelodyTakeMode('none', null)
     silenceUntilTime = 0
     setState({ status: 'idle', retakeLayerId: null, message: 'Recording failed: ' + String(error) })
   }
 }
+
+// ---- Melody takes (step 29, SPEC 3.7) ----
+
+// Same timeline as a drum take. No mic: notes come from the pinch log.
+async function recordMelodyTake(retakeLayer: MelodyLayer | null): Promise<void> {
+  if (!isHandTrackingRunning()) {
+    setState({ message: 'Turn on the camera first: melody takes are played with your hands.' })
+    return
+  }
+  // A retake keeps the layer's instrument; a new take uses the picker's.
+  const instrument = retakeLayer ? retakeLayer.instrument : getSelectedInstrument()
+
+  // Read once so the whole take uses the same values. Notes arrive late
+  // by the camera lag, so the take keeps listening that long past the end.
+  const lagSeconds = getCameraLagSeconds()
+  const postRollSeconds = Math.max(0, lagSeconds) + POST_ROLL_MARGIN_SECONDS
+
+  try {
+    setState({
+      status: 'countIn',
+      message: '',
+      retakeLayerId: retakeLayer ? retakeLayer.id : null,
+    })
+
+    // Silence layers from now until the end of the recorded loop (same as drums).
+    silenceAllLayers = state.muteLayersWhileRecording
+    silenceLayerId = retakeLayer ? retakeLayer.id : null
+    silenceUntilTime = Infinity
+
+    // Notes play live during the whole take (count-in too, to find the key).
+    setLiveMelodyTakeMode('melody', instrument)
+    startNoteLog()
+    const timing = playForTake()
+    const loopEndTime = timing.loopStartTime + timing.loopSeconds
+    silenceUntilTime = loopEndTime
+
+    await waitUntilAudioTime(timing.loopStartTime)
+    setState({ status: 'recording' })
+
+    await waitUntilAudioTime(loopEndTime + postRollSeconds)
+    setState({ status: 'processing' })
+
+    const recordedNotes = stopNoteLog()
+    setLiveMelodyTakeMode('none', null)
+    const report = processMelodyTake(recordedNotes, timing, instrument, lagSeconds)
+    report.isRetake = retakeLayer !== null
+
+    // Commit the result (undoable), exactly like a drum take.
+    let message = ''
+    if (report.snappedNotes.length === 0) {
+      message = retakeLayer ? 'No notes played, so the old layer was kept.' : 'No notes played, so no layer was added.'
+    } else if (retakeLayer) {
+      replaceTakeLayer({ ...retakeLayer, notes: report.snappedNotes })
+    } else {
+      const layer: MelodyLayer = {
+        type: 'melody',
+        id: crypto.randomUUID(),
+        instrument: instrument,
+        notes: report.snappedNotes,
+        muted: false,
+      }
+      addTakeLayer(layer)
+    }
+    if (lagSeconds === 0) {
+      message = (message + ' No camera lag saved yet, so notes may land late: run the camera lag check.').trim()
+    }
+    setState({ status: 'idle', lastMelodyTake: report, lastTakeKind: 'melody', retakeLayerId: null, message: message })
+  } catch (error) {
+    console.error(error)
+    stopNoteLog()
+    setLiveMelodyTakeMode('none', null)
+    silenceUntilTime = 0
+    setState({ status: 'idle', retakeLayerId: null, message: 'Recording failed: ' + String(error) })
+  }
+}
+
+function processMelodyTake(
+  recordedNotes: RecordedNote[],
+  timing: TakeTiming,
+  instrument: InstrumentName,
+  lagSeconds: number,
+): MelodyTakeReport {
+  const halfStep = timing.stepSeconds / 2
+  const keptNotes: TimedNote[] = []
+  const noteReports: NoteReport[] = []
+  for (const recorded of recordedNotes) {
+    // Camera time -> seconds from the loop start, minus the camera lag
+    // (SPEC 3.7), so the note sits where it was actually played.
+    let startSeconds = performanceMsToAudioTime(recorded.onMs) - timing.loopStartTime - lagSeconds
+    // Still held when the take stopped: cut at the loop end (SPEC 3.7).
+    let endSeconds = timing.loopSeconds
+    if (recorded.offMs !== null) {
+      endSeconds = performanceMsToAudioTime(recorded.offMs) - timing.loopStartTime - lagSeconds
+    }
+    endSeconds = Math.min(endSeconds, timing.loopSeconds)
+
+    // Same window as drum hits: from half a step before the start up to
+    // half a step before the end. A note pinched during the count-in and
+    // still held into the loop counts from beat 1.
+    if (startSeconds < -halfStep) {
+      if (endSeconds <= halfStep) {
+        continue // ended before the loop began
+      }
+      startSeconds = 0
+    }
+    if (startSeconds >= timing.loopSeconds - halfStep) {
+      continue
+    }
+
+    keptNotes.push({ pitch: recorded.pitch, startSeconds: startSeconds, endSeconds: endSeconds })
+    noteReports.push({ pitch: recorded.pitch, startMs: startSeconds * 1000, endMs: endSeconds * 1000 })
+  }
+
+  return {
+    instrument: instrument,
+    isRetake: false,
+    cameraLagMs: lagSeconds * 1000,
+    notes: noteReports,
+    snappedNotes: snapMelodyNotes(keptNotes, timing.stepSeconds, timing.stepsInLoop),
+  }
+}
+
+// ---- Shared helpers ----
 
 function findLayer(layerId: string): Layer | null {
   for (const layer of getProject().layers) {
