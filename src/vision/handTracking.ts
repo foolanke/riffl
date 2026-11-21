@@ -107,9 +107,8 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
   })
 }
 
-// MediaPipe labels hands as if the image were mirrored (a selfie camera).
-// We give it the camera image unmirrored, so its labels are swapped:
-// its "Left" is the user's right hand.
+// MediaPipe's label is used as-is: tested on the demo laptop, its "Left"
+// is the user's real left hand, even though we give it the unmirrored image.
 // If both hands get the same label (it happens when hands cross or blur),
 // fall back to position: the hand further left on the mirrored screen is
 // the left hand. On the mirrored screen, left = larger camera x.
@@ -118,7 +117,7 @@ function getHandSides(handedness: { categoryName: string }[][], hands: HandPoint
   for (let i = 0; i < hands.length; i++) {
     const categories = handedness[i]
     const label = categories && categories.length > 0 ? categories[0].categoryName : ''
-    sides.push(label === 'Left' ? 'right' : 'left')
+    sides.push(label === 'Left' ? 'left' : 'right')
   }
   if (hands.length === 2 && sides[0] === sides[1]) {
     const firstIsMoreLeftOnScreen = hands[0][0].x > hands[1][0].x
