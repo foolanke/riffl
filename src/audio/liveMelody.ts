@@ -18,9 +18,10 @@ import { getGuideHands } from '../vision/melodyGuide.ts'
 import type { FingerName, GuideHand } from '../vision/melodyGuide.ts'
 import { getPinchDistances, resetPinch, updatePinch } from '../vision/pinch.ts'
 import type { PinchDistances } from '../vision/pinch.ts'
+import { resetAccuratePinch, updateAccuratePinch } from '../vision/pinchAccurate.ts'
 import { getNotesToPlay } from './instruments.ts'
 import type { InstrumentName } from './instruments.ts'
-import { getMelodyVoice } from './melodySynths.ts'
+import { getFingerVoice, getMelodyVoice } from './melodySynths.ts'
 
 // Tracking sometimes loses a hand for a frame or two. A held note only
 // stops after the hand has been missing this long, so it doesn't stutter.
@@ -46,12 +47,16 @@ const instrumentListeners = new Set<() => void>()
 const held: Record<HandSide, HeldNote | null> = { left: null, right: null }
 const lastSeenTime: Record<HandSide, number> = { left: 0, right: 0 }
 const lastDistances: Record<HandSide, PinchDistances | null> = { left: null, right: null }
+// Accurate pinch only: flat-picture distances, for the /?pinchdebug readout.
+const lastFlatDistances: Record<HandSide, PinchDistances | null> = { left: null, right: null }
+// Accurate pinch only: held fingers that struck again this frame (fast repeats).
+const lastRetriggered: Record<HandSide, FingerName[]> = { left: [], right: [] }
 
 // Camera lag check (step 28): while set, live notes are silent and every
 // new pinch reports the camera time (ms, performance.now clock) of the
 // frame it was first seen in.
 let pinchStartListener: ((frameTimeMs: number) => void) | null = null
-const capturedFinger: Record<HandSide, FingerName | null> = { left: null, right: null }
+const wasPinching: Record<HandSide, boolean> = { left: false, right: false }
 
 // ---- Take mode (step 29), set by the recorder ----
 // 'drum': silent, so a stray pinch can't leak into the mic as a drum hit.
@@ -71,6 +76,47 @@ export interface RecordedNote {
 }
 let noteLog: RecordedNote[] | null = null // null = not logging
 const openLogNote: Record<HandSide, RecordedNote | null> = { left: null, right: null }
+
+// Several notes per hand (designed page, with accurate pinch on): each
+// pinched finger holds its own note and its own open log entry.
+const heldFingers: Record<HandSide, Map<FingerName, HeldNote>> = { left: new Map(), right: new Map() }
+const openLogFingers: Record<HandSide, Map<FingerName, RecordedNote>> = { left: new Map(), right: new Map() }
+
+// The designed page turns on the more robust pinch detection
+// (vision/pinchAccurate.ts), which also lets one hand pinch several
+// fingers at once, each playing its own note (the human overrode SPEC 3.4
+// for the designed page). The test page never calls this, so it keeps
+// the original detection in vision/pinch.ts and one note per hand.
+let accuratePinch = false
+
+export function setAccuratePinch(on: boolean): void {
+  if (on === accuratePinch) {
+    return
+  }
+  stopAllNotes()
+  accuratePinch = on
+}
+
+// This frame's pinched fingers for one hand, with whichever detector is
+// on. The original detector gives at most one.
+function detectPinches(side: HandSide, hand: GuideHand, frame: HandFrame): FingerName[] {
+  if (accuratePinch) {
+    const result = updateAccuratePinch(side, hand.points, hand.worldPoints, frame.aspect, frame.time)
+    lastDistances[side] = result.distances
+    lastFlatDistances[side] = result.flatDistances
+    lastRetriggered[side] = result.retriggered
+    return result.fingers
+  }
+  const distances = getPinchDistances(hand.points, frame.aspect)
+  lastDistances[side] = distances
+  const finger = updatePinch(side, distances)
+  return finger !== null ? [finger] : []
+}
+
+function resetHandPinch(side: HandSide): void {
+  resetPinch(side)
+  resetAccuratePinch(side)
+}
 
 // Call once, after loadMelodyInstruments().
 export function initLiveMelody(): void {
@@ -129,7 +175,7 @@ export function setLiveMelodyOn(on: boolean): void {
 function stopAllNotes(): void {
   for (const side of SIDES) {
     stopNote(side, performance.now())
-    resetPinch(side)
+    resetHandPinch(side)
   }
 }
 
@@ -155,6 +201,8 @@ export function startNoteLog(): void {
   noteLog = []
   openLogNote.left = null
   openLogNote.right = null
+  openLogFingers.left.clear()
+  openLogFingers.right.clear()
 }
 
 // Stops logging and returns every note played. Notes still held are
@@ -164,6 +212,8 @@ export function stopNoteLog(): RecordedNote[] {
   noteLog = null
   openLogNote.left = null
   openLogNote.right = null
+  openLogFingers.left.clear()
+  openLogFingers.right.clear()
   return notes
 }
 
@@ -190,7 +240,7 @@ function logNoteOff(side: HandSide, timeMs: number): void {
 export function startPinchCapture(listener: (frameTimeMs: number) => void): void {
   stopAllNotes()
   for (const side of SIDES) {
-    capturedFinger[side] = null
+    wasPinching[side] = false
   }
   pinchStartListener = listener
 }
@@ -198,8 +248,8 @@ export function startPinchCapture(listener: (frameTimeMs: number) => void): void
 export function stopPinchCapture(): void {
   pinchStartListener = null
   for (const side of SIDES) {
-    resetPinch(side)
-    capturedFinger[side] = null
+    resetHandPinch(side)
+    wasPinching[side] = false
   }
 }
 
@@ -212,18 +262,16 @@ function handleCaptureFrame(frame: HandFrame, listener: (frameTimeMs: number) =>
     const hand = findHand(guideHands, side)
     if (hand === null) {
       lastDistances[side] = null
-      resetPinch(side)
-      capturedFinger[side] = null
+      resetHandPinch(side)
+      wasPinching[side] = false
       continue
     }
-    const distances = getPinchDistances(hand.points, frame.aspect)
-    lastDistances[side] = distances
-    const finger = updatePinch(side, distances)
+    const pinching = detectPinches(side, hand, frame).length > 0
     // Only a pinch from open counts, not sliding to another finger.
-    if (finger !== null && capturedFinger[side] === null) {
+    if (pinching && !wasPinching[side]) {
       listener(frame.time)
     }
-    capturedFinger[side] = finger
+    wasPinching[side] = pinching
   }
 }
 
@@ -250,15 +298,18 @@ function handleHandFrame(frame: HandFrame): void {
       if (frame.time - lastSeenTime[side] > MISSING_HAND_GRACE_MS) {
         // The note ended when the hand was last seen, not now.
         stopNote(side, lastSeenTime[side])
-        resetPinch(side)
+        resetHandPinch(side)
       }
       continue
     }
     lastSeenTime[side] = frame.time
 
-    const distances = getPinchDistances(hand.points, frame.aspect)
-    lastDistances[side] = distances
-    const finger = updatePinch(side, distances)
+    const fingers = detectPinches(side, hand, frame)
+    if (accuratePinch) {
+      updateFingerNotes(side, hand, fingers, frame.time)
+      continue
+    }
+    const finger = fingers.length > 0 ? fingers[0] : null
     const current = held[side]
 
     if (finger === null) {
@@ -306,7 +357,62 @@ function startNote(side: HandSide, finger: FingerName, pitch: string, timeMs: nu
   logNoteOn(side, pitch, timeMs)
 }
 
+// Several notes per hand: start notes for newly pinched fingers and stop
+// the ones that let go. Each finger keeps the pitch it started on.
+function updateFingerNotes(side: HandSide, hand: GuideHand, fingers: FingerName[], timeMs: number): void {
+  for (const finger of Array.from(heldFingers[side].keys())) {
+    if (!fingers.includes(finger)) {
+      stopFingerNote(side, finger, timeMs)
+    }
+  }
+  for (const finger of fingers) {
+    if (!heldFingers[side].has(finger)) {
+      startFingerNote(side, finger, getPitch(hand, finger), timeMs)
+    } else if (lastRetriggered[side].includes(finger)) {
+      // Fast repeat on the same finger: end the note and strike it again.
+      stopFingerNote(side, finger, timeMs)
+      startFingerNote(side, finger, getPitch(hand, finger), timeMs)
+    }
+  }
+}
+
+function startFingerNote(side: HandSide, finger: FingerName, pitch: string, timeMs: number): void {
+  const instrument = getPlayingInstrument()
+  const voice = getFingerVoice(instrument, side, finger)
+  if (!voice) {
+    return
+  }
+  voice.noteOn(getNotesToPlay(instrument, pitch), Tone.immediate())
+  heldFingers[side].set(finger, { finger: finger, pitch: pitch, instrument: instrument })
+  if (noteLog !== null) {
+    const note: RecordedNote = { pitch: pitch, onMs: timeMs, offMs: null }
+    noteLog.push(note)
+    openLogFingers[side].set(finger, note)
+  }
+}
+
+function stopFingerNote(side: HandSide, finger: FingerName, timeMs: number): void {
+  const current = heldFingers[side].get(finger)
+  if (current === undefined) {
+    return
+  }
+  const voice = getFingerVoice(current.instrument, side, finger)
+  if (voice) {
+    voice.noteOff(Tone.immediate())
+  }
+  heldFingers[side].delete(finger)
+  const logged = openLogFingers[side].get(finger)
+  if (logged !== undefined) {
+    logged.offMs = timeMs
+    openLogFingers[side].delete(finger)
+  }
+}
+
+// Stops everything one hand is holding (its single note and any finger notes).
 function stopNote(side: HandSide, timeMs: number): void {
+  for (const finger of Array.from(heldFingers[side].keys())) {
+    stopFingerNote(side, finger, timeMs)
+  }
   const current = held[side]
   if (current === null) {
     return
@@ -321,12 +427,35 @@ function stopNote(side: HandSide, timeMs: number): void {
 
 // ---- For the screen ----
 
-// The pitch each hand is holding right now, or null.
+// The pitch each hand is holding right now, or null. With several notes
+// per hand, the first one (the test page only ever has one).
 export function getHeldNote(side: HandSide): HeldNote | null {
-  return held[side]
+  if (held[side] !== null) {
+    return held[side]
+  }
+  const first = heldFingers[side].values().next()
+  return first.done ? null : first.value
+}
+
+// Every note one hand is holding right now (several with accurate pinch).
+export function getHeldNotes(side: HandSide): HeldNote[] {
+  const notes: HeldNote[] = []
+  const single = held[side]
+  if (single !== null) {
+    notes.push(single)
+  }
+  for (const note of heldFingers[side].values()) {
+    notes.push(note)
+  }
+  return notes
 }
 
 // Latest pinch distances per hand, for the tuning readout.
 export function getLastPinchDistances(side: HandSide): PinchDistances | null {
   return lastDistances[side]
+}
+
+// Flat-picture distances (accurate pinch only), for the designed page's readout.
+export function getLastFlatPinchDistances(side: HandSide): PinchDistances | null {
+  return lastFlatDistances[side]
 }

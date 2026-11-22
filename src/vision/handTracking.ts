@@ -30,6 +30,10 @@ export interface HandFrame {
   hands: HandPoint[][]
   sides: HandSide[]
   aspect: number // camera image width / height, for measuring real distances
+  // The same 21 points per hand in MediaPipe's "world" coordinates: meters,
+  // centred on the hand. Depth here is far better than the image z, so
+  // finger-to-thumb distances are real 3D distances (used by pinchAccurate).
+  world?: HandPoint[][]
 }
 
 let landmarker: HandLandmarker | null = null
@@ -100,12 +104,20 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
       }
       hands.push(points)
     }
+    const world: HandPoint[][] = []
+    for (const handWorld of result.worldLandmarks) {
+      const points: HandPoint[] = []
+      for (const landmark of handWorld) {
+        points.push({ x: landmark.x, y: landmark.y, z: landmark.z })
+      }
+      world.push(points)
+    }
     const sides = getHandSides(result.handedness, hands)
     // When the camera took the picture, if the browser knows. This matters
     // for matching hands to mic hits: the frame reaches us tens of ms later.
     const captureTime = metadata.captureTime !== undefined ? metadata.captureTime : now
     const aspect = video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 16 / 9
-    latestFrame = { time: captureTime, hands: hands, sides: sides, aspect: aspect }
+    latestFrame = { time: captureTime, hands: hands, sides: sides, aspect: aspect, world: world }
     if (isRecordingFrames) {
       recordedFrames.push(latestFrame)
     }

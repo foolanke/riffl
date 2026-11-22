@@ -6,7 +6,7 @@
 // Keys and ripples are updated every screen frame straight on the DOM,
 // reading the engine (liveMelody), so React never re-renders per frame.
 import { useEffect, useRef } from 'react'
-import { getHeldNote, getPlayingInstrument } from '../../../audio/liveMelody.ts'
+import { getHeldNotes, getPlayingInstrument } from '../../../audio/liveMelody.ts'
 import { moveByWhiteKeys } from '../../../audio/instruments.ts'
 import type { InstrumentName } from '../../../audio/instruments.ts'
 import type { HandSide } from '../../../vision/handTracking.ts'
@@ -33,8 +33,9 @@ export function PianoOverlay() {
   const rippleLayerRef = useRef<HTMLDivElement>(null)
 
   useEffect(function () {
-    // The note each hand was holding last frame, to spot new notes.
-    const lastPitch: Record<HandSide, string | null> = { left: null, right: null }
+    // The notes each hand was holding last frame, to spot new notes.
+    // A hand can hold several (one per pinched finger).
+    const lastPitches: Record<HandSide, Set<string>> = { left: new Set(), right: new Set() }
     let frameId = 0
 
     function draw() {
@@ -43,17 +44,17 @@ export function PianoOverlay() {
         const instrument = getPlayingInstrument()
         const lit = new Set<string>()
         for (const side of SIDES) {
-          const held = getHeldNote(side)
-          const pitch = held ? held.pitch : null
-          if (pitch !== null) {
-            for (const keyPitch of getLitKeys(instrument, pitch)) {
+          const pitches = new Set<string>()
+          for (const note of getHeldNotes(side)) {
+            pitches.add(note.pitch)
+            for (const keyPitch of getLitKeys(instrument, note.pitch)) {
               lit.add(keyPitch)
             }
-            if (pitch !== lastPitch[side]) {
-              addRipple(overlay, rippleLayerRef.current, pitch)
+            if (!lastPitches[side].has(note.pitch)) {
+              addRipple(overlay, rippleLayerRef.current, note.pitch)
             }
           }
-          lastPitch[side] = pitch
+          lastPitches[side] = pitches
         }
 
         const keys = overlay.querySelectorAll<HTMLElement>('.piano-white-key')

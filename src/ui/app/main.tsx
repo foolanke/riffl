@@ -2,6 +2,7 @@
 // The old test page has its own entry: test.html -> src/main.tsx.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { setAccuratePinch } from '../../audio/liveMelody.ts'
 import { initAutoSave } from '../../project/saveLoad.ts'
 import { RifflApp } from './RifflApp.tsx'
 import './styles/tokens.css'
@@ -22,6 +23,10 @@ window.addEventListener('resize', updateUiScale)
 // Load the auto-saved project (if any) before anything reads it.
 // Both pages share it, so layers made on one show up on the other.
 initAutoSave()
+
+// The designed page uses the more robust pinch detection (3D distances,
+// smoothing, overlap rejection; see vision/pinchAccurate.ts).
+setAccuratePinch(true)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

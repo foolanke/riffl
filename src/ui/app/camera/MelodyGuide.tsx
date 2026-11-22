@@ -7,10 +7,16 @@
 // Drawn on a canvas every screen frame from the engine (hand tracking and
 // liveMelody), so React never re-renders per frame (SPEC 0.1).
 import { useEffect, useRef } from 'react'
-import { getHeldNote } from '../../../audio/liveMelody.ts'
+import { getHeldNotes, getLastFlatPinchDistances, getLastPinchDistances } from '../../../audio/liveMelody.ts'
 import { getLatestHandFrame } from '../../../vision/handTracking.ts'
 import type { HandPoint, HandSide } from '../../../vision/handTracking.ts'
-import { COLUMN_COUNT, getGuideHands } from '../../../vision/melodyGuide.ts'
+import {
+  COLUMN_COUNT,
+  getColumnBorder,
+  getGuideHands,
+  setColumnArea,
+  setColumnPoint,
+} from '../../../vision/melodyGuide.ts'
 import { getImageFit, imageToPanel } from './imageFit.ts'
 import type { ImageFit } from './imageFit.ts'
 
@@ -34,10 +40,22 @@ const BONES: [number, number][] = [
 
 const SIDES: HandSide[] = ['left', 'right']
 
+// Tuning aid: open /?pinchdebug to see each finger's thumb distance (in
+// hand sizes, "3D / flat picture") above its note label. Hidden otherwise; not part of the design.
+const SHOW_PINCH_DEBUG = new URLSearchParams(window.location.search).has('pinchdebug')
+
+// The columns line up with the piano overlay's octaves (design.md 5.19):
+// overlay inset 15 + border 1 + padding 8, minus half the 8px octave gap,
+// so each column border runs down the middle of the gap between octaves.
+const COLUMN_AREA_INSET = 15 + 1 + 8 - 4
+
 export function MelodyGuide() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(function () {
+    // Decide a hand's column where the pinch happens (the thumb tip), not
+    // at the palm, so the note matches the column the fingers touch in.
+    setColumnPoint('thumb')
     let frameId = 0
     function draw() {
       const canvas = canvasRef.current
@@ -80,10 +98,16 @@ function drawGuide(canvas: HTMLCanvasElement) {
 
   const fit = getImageFit(layoutWidth, layoutHeight)
 
+  // Tell the engine which part of the (cropped, mirrored) camera image the
+  // columns cover: the piano overlay's span, in mirrored image fractions.
+  const areaLeft = (COLUMN_AREA_INSET - fit.offsetX) / fit.width
+  const areaRight = (layoutWidth - COLUMN_AREA_INSET - fit.offsetX) / fit.width
+  setColumnArea(areaLeft, areaRight)
+
   // Column borders, at the same places the engine switches columns.
   context.fillStyle = COLOR_FG
   for (let column = 1; column < COLUMN_COUNT; column++) {
-    const x = Math.round(fit.offsetX + (column / COLUMN_COUNT) * fit.width)
+    const x = Math.round(fit.offsetX + getColumnBorder(column) * fit.width)
     context.fillRect(x, 0, 1, layoutHeight)
   }
 
@@ -97,7 +121,7 @@ function drawGuide(canvas: HTMLCanvasElement) {
   context.font = FONT_LABEL
   context.letterSpacing = '1.44px'
   for (const hand of hands) {
-    const held = getHeldNote(hand.side)
+    const heldNotes = getHeldNotes(hand.side)
     // Which hand the app thinks this is, so a mix-up is easy to spot.
     const palm = imageToPanel(hand.palm, fit)
     drawPill(context, hand.side === 'left' ? 'LEFT' : 'RIGHT', palm.x, palm.y, COLOR_OVERLAY, COLOR_FG_MUTED, 4)
@@ -106,7 +130,12 @@ function drawGuide(canvas: HTMLCanvasElement) {
       // Just above the fingertip, so the label doesn't cover the finger.
       // The pinched finger is inverted (white pill, black text).
       const tip = imageToPanel(finger.tip, fit)
-      const isPinched = held !== null && held.finger === finger.finger
+      let isPinched = false
+      for (const note of heldNotes) {
+        if (note.finger === finger.finger) {
+          isPinched = true
+        }
+      }
       drawPill(
         context,
         finger.pitch,
@@ -116,6 +145,15 @@ function drawGuide(canvas: HTMLCanvasElement) {
         isPinched ? COLOR_BG : COLOR_FG,
         4,
       )
+      const distances = SHOW_PINCH_DEBUG ? getLastPinchDistances(hand.side) : null
+      const flatDistances = SHOW_PINCH_DEBUG ? getLastFlatPinchDistances(hand.side) : null
+      if (distances !== null) {
+        let text = distances[finger.finger].toFixed(2)
+        if (flatDistances !== null) {
+          text += ' / ' + flatDistances[finger.finger].toFixed(2)
+        }
+        drawPill(context, text, tip.x, tip.y - 46, COLOR_OVERLAY, COLOR_FG_MUTED, 4)
+      }
     }
   }
 
@@ -123,9 +161,8 @@ function drawGuide(canvas: HTMLCanvasElement) {
   // first, like on screen.
   const playing: string[] = []
   for (const side of SIDES) {
-    const held = getHeldNote(side)
-    if (held !== null) {
-      playing.push(held.pitch)
+    for (const note of getHeldNotes(side)) {
+      playing.push(note.pitch)
     }
   }
   if (playing.length > 0) {

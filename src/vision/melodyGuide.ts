@@ -17,6 +17,42 @@ const COLUMN_START_OCTAVES = [4, 5, 6]
 // the switch feel sticky.
 const DEAD_ZONE = 0.04
 
+// Optional column layout for the designed page (additive). The test page
+// never calls the setters below, so it keeps the defaults: columns split
+// the full camera width and a hand's position is its palm.
+//
+// Column area: the part of the mirrored screen (0-1 of the camera image)
+// that the three columns divide equally. The designed page crops the
+// camera to fill its panel and draws one piano octave per column, so it
+// sets this to the piano overlay's span. Outside the area a hand counts
+// as being in the nearest edge column.
+let columnAreaLeft = 0
+let columnAreaRight = 1
+
+// Which point decides a hand's column. 'thumb' is the thumb tip: every
+// pinch happens there, so the note plays in the column the user sees the
+// fingers touch in, even when the palm is on the other side of a border.
+export type ColumnPoint = 'palm' | 'thumb'
+let columnPoint: ColumnPoint = 'palm'
+const THUMB_TIP = 4
+
+export function setColumnArea(left: number, right: number): void {
+  if (right - left > 0.0001) {
+    columnAreaLeft = left
+    columnAreaRight = right
+  }
+}
+
+export function setColumnPoint(point: ColumnPoint): void {
+  columnPoint = point
+}
+
+// Where the border before `column` sits on the mirrored screen (0-1 of the
+// camera image). Border 0 is the area's left edge, COLUMN_COUNT its right.
+export function getColumnBorder(column: number): number {
+  return columnAreaLeft + (column / COLUMN_COUNT) * (columnAreaRight - columnAreaLeft)
+}
+
 export type FingerName = 'index' | 'middle' | 'ring' | 'pinky'
 
 // MediaPipe landmark numbers for each fingertip.
@@ -57,6 +93,7 @@ export interface GuideHand {
   palm: HandPoint // camera coordinates
   fingers: GuideFinger[]
   points: HandPoint[] // all 21 tracked points, for pinch detection
+  worldPoints?: HandPoint[] // the same points in meters (see HandFrame.world)
 }
 
 // Column each hand was in on the last frame, for the dead zone.
@@ -85,13 +122,15 @@ export function getGuideHands(frame: HandFrame): GuideHand[] {
     seen[side] = true
 
     const palm = getPalmCenter(points)
-    const column = updateColumn(side, 1 - palm.x)
+    const columnX = columnPoint === 'thumb' ? points[THUMB_TIP].x : palm.x
+    const column = updateColumn(side, 1 - columnX)
     guideHands.push({
       side: side,
       column: column,
       palm: palm,
       fingers: getFingers(points, side, column),
       points: points,
+      worldPoints: frame.world ? frame.world[i] : undefined,
     })
   }
 
@@ -128,6 +167,13 @@ function getPalmCenter(points: HandPoint[]): HandPoint {
 
 // screenX: 0 = left edge of the mirrored screen, 1 = right edge.
 function updateColumn(side: HandSide, screenX: number): number {
+  // Measure inside the column area (the full width unless the page set one),
+  // so the dead zone is a fraction of the area too.
+  const areaX = (screenX - columnAreaLeft) / (columnAreaRight - columnAreaLeft)
+  return updateColumnInArea(side, areaX)
+}
+
+function updateColumnInArea(side: HandSide, screenX: number): number {
   const rawColumn = Math.min(COLUMN_COUNT - 1, Math.max(0, Math.floor(screenX * COLUMN_COUNT)))
   const previous = currentColumn[side]
   let column = rawColumn

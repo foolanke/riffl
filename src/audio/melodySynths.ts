@@ -28,6 +28,11 @@ interface NotePlayer {
 }
 
 const voices = new Map<InstrumentName, Record<HandSide, MelodyVoice>>()
+// The note player behind each hand's voice, so finger voices (below) can
+// share it instead of building (and loading) more synths.
+const handPlayers = new Map<InstrumentName, Record<HandSide, CountedPlayer>>()
+// Finger voices, made on first use. Key: instrument|side|finger.
+const fingerVoices = new Map<string, MelodyVoice>()
 // Recorded melody layers (step 29) play on their own player per
 // instrument, so loop playback never cuts off a note you're playing live.
 const layerPlayers = new Map<InstrumentName, NotePlayer>()
@@ -40,9 +45,15 @@ export async function loadMelodyInstruments(): Promise<void> {
     return
   }
   for (const instrument of INSTRUMENTS) {
+    const leftPlayer = createNotePlayer(instrument.name)
+    const rightPlayer = createNotePlayer(instrument.name)
     voices.set(instrument.name, {
-      left: makeVoice(createNotePlayer(instrument.name)),
-      right: makeVoice(createNotePlayer(instrument.name)),
+      left: makeVoice(leftPlayer),
+      right: makeVoice(rightPlayer),
+    })
+    handPlayers.set(instrument.name, {
+      left: { player: leftPlayer, counts: new Map() },
+      right: { player: rightPlayer, counts: new Map() },
     })
     layerPlayers.set(instrument.name, createNotePlayer(instrument.name))
   }
@@ -60,6 +71,73 @@ export function playMelodyNotes(instrument: InstrumentName, notes: string[], dur
 export function getMelodyVoice(instrument: InstrumentName, side: HandSide): MelodyVoice | null {
   const handVoices = voices.get(instrument)
   return handVoices ? handVoices[side] : null
+}
+
+// ---- Several notes per hand (designed page only) ----
+// The designed page lets one hand pinch several fingers at once (the
+// human overrode SPEC 3.4 there). Each finger gets its own voice on the
+// hand's player. Two fingers can sound the same note (chord pad triads
+// share notes), so the player counts how many voices hold each note and
+// only releases it when the last one lets go.
+interface CountedPlayer {
+  player: NotePlayer
+  counts: Map<string, number>
+}
+
+export function getFingerVoice(instrument: InstrumentName, side: HandSide, finger: string): MelodyVoice | null {
+  const key = instrument + '|' + side + '|' + finger
+  const existing = fingerVoices.get(key)
+  if (existing) {
+    return existing
+  }
+  const players = handPlayers.get(instrument)
+  if (!players) {
+    return null
+  }
+  const voice = makeCountedVoice(players[side])
+  fingerVoices.set(key, voice)
+  return voice
+}
+
+function makeCountedVoice(shared: CountedPlayer): MelodyVoice {
+  let sounding: string[] = []
+  function release(time: number) {
+    const toRelease: string[] = []
+    for (const note of sounding) {
+      const count = (shared.counts.get(note) ?? 0) - 1
+      if (count <= 0) {
+        shared.counts.delete(note)
+        toRelease.push(note)
+      } else {
+        shared.counts.set(note, count)
+      }
+    }
+    if (toRelease.length > 0) {
+      shared.player.triggerRelease(toRelease, time)
+    }
+    sounding = []
+  }
+  return {
+    noteOn(notes: string[], time: number) {
+      release(time)
+      // Remove repeats (a triad never has any, but be safe with counts).
+      const unique: string[] = []
+      for (const note of notes) {
+        if (!unique.includes(note)) {
+          unique.push(note)
+        }
+      }
+      for (const note of unique) {
+        shared.counts.set(note, (shared.counts.get(note) ?? 0) + 1)
+      }
+      // Re-striking a note another finger holds is fine: it just plays again.
+      shared.player.triggerAttack(unique, time)
+      sounding = unique
+    },
+    noteOff(time: number) {
+      release(time)
+    },
+  }
 }
 
 // Remembers which notes are sounding, so note off (or the next note)
