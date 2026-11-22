@@ -1,0 +1,11 @@
+/* The designed page's styles, one file per area. Order matters: it is the
+   cascade order. Values come only from tokens.css (design.md section 2). */
+@import './layout.css';
+@import './components.css';
+@import './camera.css';
+@import './layers.css';
+@import './calibration.css';
+@import './start.css';
+@import './transport.css';
+@import './settings.css';
+@import './objects.css';

@@ -1,0 +1,127 @@
+/* Design tokens from docs/design.md section 2. Use only these values. */
+
+/* Fonts are bundled in public/fonts (offline rule, SPEC 0.2).
+   font-display: block so the demo never flashes a fallback font. */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: 'Clash Display';
+  src: url('/fonts/ClashDisplay-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  /* 2.1 Colour */
+  --color-bg: #000000;
+  --color-fg: #ffffff;
+  --color-fg-muted: #d9d9d9;
+  --color-line: #6c6c6c;
+  --color-surface: #444444;
+  --color-record: #ff0000;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+  --color-key-border: rgba(255, 255, 255, 0.4);
+  --color-key-active: rgba(217, 217, 217, 0.35);
+
+  /* 2.2 Typography */
+  --font-ui: 'Space Grotesk', system-ui, sans-serif;
+  --font-brand: 'Clash Display', 'Space Grotesk', system-ui, sans-serif;
+
+  /* 2.3 Radius */
+  --radius: 8px;
+  --radius-small: 4px;
+}
+
+/* ---- Base ---- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Whole-page scale (set by main.tsx): 1 at 1920 x 1080 and up, smaller on
+   smaller screens, so everything shrinks in proportion. Chrome's zoom also
+   scales vw/vh inside, so dividing by the scale keeps the page at exactly
+   the window size. */
+#root {
+  zoom: var(--ui-scale, 1);
+  width: calc(100vw / var(--ui-scale, 1));
+  height: calc(100vh / var(--ui-scale, 1));
+  overflow: hidden;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+select {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+/* ---- Text styles (2.2). All UI text is uppercase. ---- */
+
+.text-label {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 1.44px;
+  line-height: normal;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.text-item {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: 0.48px;
+  line-height: normal;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.text-title {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 18px;
+  letter-spacing: 0.54px;
+  line-height: normal;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.color-muted {
+  color: var(--color-fg-muted);
+}
+
+.color-line {
+  color: var(--color-line);
+}
+
+/* Keyboard focus (design.md section 8 default). */
+:focus-visible {
+  outline: 1px solid var(--color-fg);
+  outline-offset: 2px;
+}

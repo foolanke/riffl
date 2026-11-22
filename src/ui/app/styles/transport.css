@@ -1,0 +1,54 @@
+/* Play/stop, undo, beat readout, disabled outline buttons, layer card actions. */
+
+/* ---- Playback and layer controls (not in the design yet, design.md 10 Q7) ----
+   Built from existing parts: outline button 5.5, Tick glyph 2.5, Label text. */
+
+/* Outline buttons can now be disabled (PLAY/STOP, UNDO, MUTE, DELETE):
+   the section 8 disabled default, and no hover. */
+.button-outline:disabled {
+  background: var(--color-surface);
+  border-color: var(--color-surface);
+  color: var(--color-line);
+  cursor: default;
+  opacity: 1;
+}
+
+/* Bar / beat readout next to the LAYERS title (SPEC step 4). */
+.beat-readout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Tick glyph: grey between beats, white for a moment on each beat. */
+.beat-tick {
+  width: 1px;
+  height: 16px;
+  background: var(--color-line);
+}
+
+.beat-tick.is-flash {
+  background: var(--color-fg);
+}
+
+.beat-readout-text {
+  color: var(--color-line);
+}
+
+.beat-readout-text.is-playing {
+  color: var(--color-fg-muted);
+}
+
+/* MUTE / DELETE row at the bottom of an expanded layer card. */
+.layer-card-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.layer-card-actions .button-outline {
+  flex: 1 0 0;
+  min-width: 1px;
+  justify-content: center;
+}

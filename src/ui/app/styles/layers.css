@@ -1,0 +1,247 @@
+/* Bottom layers panel, track rows and the score staff (design.md 4.1, 5.12-5.14). */
+
+/* ---- Layers panel (3.1, 4.1) ---- */
+
+.layers-panel {
+  flex-shrink: 0;
+  height: 290px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.layers-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.layers-header-spacer {
+  flex: 1 0 0;
+  min-width: 1px;
+}
+
+.layers-empty {
+  flex: 1 0 0;
+  min-height: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* More layers than fit: scroll (design.md 10, Q6 is still open). */
+.tracks {
+  flex: 1 0 0;
+  min-height: 1px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+/* ---- 5.12 Track row (percussion, step dots) ---- */
+
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+}
+
+.track-row.is-muted {
+  opacity: 0.4;
+}
+
+.track-label {
+  width: 140px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.track-steps {
+  flex: 1 0 0;
+  min-width: 1px;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  overflow: hidden;
+}
+
+/* 5.13 Step, Dot shape: drawn in CSS so it stays round in any cell width. */
+.step {
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step::after {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-line);
+}
+
+.step.is-on::after {
+  border: none;
+  background: var(--color-fg-muted);
+}
+
+/* ---- 5.14 Score track (melody layers), one slot per 16th ---- */
+
+.score-staff {
+  position: relative;
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 88px;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Five staff lines at y 28, 36, 44, 52, 60 (F5 D5 B4 G4 E4). */
+.score-lines {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 28px;
+  height: 33px;
+  background: repeating-linear-gradient(to bottom, var(--color-line) 0 1px, transparent 1px 8px);
+  pointer-events: none;
+}
+
+.score-time-signature {
+  position: relative;
+  width: 36px;
+  height: 88px;
+  flex-shrink: 0;
+}
+
+/* Barline at the start of the staff. */
+.score-time-signature::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 28px;
+  width: 1px;
+  height: 33px;
+  background: var(--color-line);
+}
+
+.score-digit {
+  position: absolute;
+  left: 15px;
+  line-height: 20px;
+}
+
+.score-slots {
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 88px;
+  display: flex;
+}
+
+.score-slot {
+  position: relative;
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 88px;
+}
+
+/* Barline between bars of a multi-bar loop. */
+.score-slot.starts-bar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 28px;
+  width: 1px;
+  height: 33px;
+  background: var(--color-line);
+}
+
+.score-count {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--color-line);
+}
+
+.score-count.has-note {
+  color: var(--color-fg);
+}
+
+.score-head {
+  position: absolute;
+  left: 50%;
+  width: 11px;
+  height: 8px;
+  transform: translateX(-50%);
+}
+
+.score-stem {
+  position: absolute;
+  width: 1.5px;
+  height: 26px;
+  background: var(--color-fg);
+  transform: translateX(-50%);
+}
+
+.score-stem.is-up {
+  left: calc(50% + 4.75px);
+}
+
+.score-stem.is-down {
+  left: calc(50% - 5px);
+}
+
+.score-name {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Final double barline: 1px at x 0 and 3px at x 3, 33 tall from y 28. */
+.score-end {
+  position: relative;
+  width: 6px;
+  height: 88px;
+  flex-shrink: 0;
+}
+
+.score-end::before,
+.score-end::after {
+  content: '';
+  position: absolute;
+  top: 28px;
+  height: 33px;
+  background: var(--color-fg);
+}
+
+.score-end::before {
+  left: 0;
+  width: 1px;
+}
+
+.score-end::after {
+  left: 3px;
+  width: 3px;
+}

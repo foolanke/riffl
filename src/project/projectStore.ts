@@ -73,11 +73,20 @@ export interface Box {
   height: number
 }
 
+// A point on the camera image (0..1, not mirrored).
+export interface OutlinePoint {
+  x: number
+  y: number
+}
+
 // A physical object on the table (SPEC 1.2): one fixed box, one drum.
+// `outline` is the object's silhouette inside the box, for display only;
+// hit confirmation always uses the box (SPEC 1.4).
 export interface TrackedObject {
   id: string
   drum: DrumName
   box: Box
+  outline?: OutlinePoint[]
 }
 
 export interface Project {
@@ -254,6 +263,19 @@ export function setObjectDrum(objectId: string, drum: DrumName): void {
   setProject({ ...currentProject, objects: updated })
 }
 
+// Saves the traced silhouette of an object (display only, not undoable).
+export function setObjectOutline(objectId: string, outline: OutlinePoint[]): void {
+  const updated: TrackedObject[] = []
+  for (const object of currentProject.objects) {
+    if (object.id === objectId) {
+      updated.push({ ...object, outline: outline })
+    } else {
+      updated.push(object)
+    }
+  }
+  setProject({ ...currentProject, objects: updated })
+}
+
 export function findObject(objectId: string | null | undefined): TrackedObject | null {
   for (const object of currentProject.objects) {
     if (object.id === objectId) {
@@ -267,6 +289,55 @@ export function findObject(objectId: string | null | undefined): TrackedObject |
 
 export function addLayers(newLayers: Layer[]): void {
   setProject({ ...currentProject, layers: [...currentProject.layers, ...newLayers] })
+}
+
+// Change which drum a recorded drum layer plays; its hits stay the same.
+// Used by the designed page's layer card. Not undoable (undo is for takes, SPEC 1.6).
+export function setLayerDrum(layerId: string, drum: DrumName): void {
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId && layer.type === 'drum') {
+      updated.push({ ...layer, drum: drum })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
+// Change which object a recorded drum layer's retakes use for camera
+// confirmation (SPEC 1.4); null = mic only. Its hits stay the same.
+// Used by the designed page's object markers. Not undoable (undo is for takes, SPEC 1.6).
+export function setLayerObject(layerId: string, objectId: string | null): void {
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId && layer.type === 'drum') {
+      const changed: DrumLayer = { ...layer }
+      if (objectId === null) {
+        delete changed.objectId
+      } else {
+        changed.objectId = objectId
+      }
+      updated.push(changed)
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
+// Change which instrument a recorded melody layer plays; its notes stay the same.
+// Used by the designed page's layer card. Not undoable (undo is for takes, SPEC 1.6).
+export function setLayerInstrument(layerId: string, instrument: InstrumentName): void {
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId && layer.type === 'melody') {
+      updated.push({ ...layer, instrument: instrument })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
 }
 
 export function deleteLayer(layerId: string): void {

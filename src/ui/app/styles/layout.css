@@ -1,0 +1,85 @@
+/* Page frame (design.md 3.1) and sidebar sections (5.2). */
+
+/* ---- 3.1 Page frame ---- */
+
+.page {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+  height: 100%;
+  min-height: 0;
+}
+
+.main {
+  flex: 1 0 0;
+  min-width: 1px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.sidebar {
+  flex-shrink: 0;
+  width: 321px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 32px;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sidebar-spacer {
+  flex: 1 0 0;
+  min-height: 0;
+}
+
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+/* Small, discreet link to the old test page. */
+.test-page-link {
+  align-self: center;
+  color: var(--color-line);
+  text-decoration: none;
+}
+
+.test-page-link:hover {
+  color: var(--color-fg-muted);
+}
+
+/* ---- 5.2 Section ---- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.section-title {
+  padding: 0 8px;
+  color: var(--color-fg);
+}
+
+/* Anyone who asks the system for less motion gets instant changes. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
