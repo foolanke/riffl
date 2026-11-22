@@ -8,7 +8,8 @@
 // toggle switch, and outline buttons (5.5, 5.6), in boxed groups.
 // Esc, CLOSE or a click outside the panel closes it. Opening fades the page
 // dim in and slides the panel up into place; closing plays it backwards.
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
+import { setMultiFingerNotes } from '../../../audio/liveMelody.ts'
 import { setMuteLayersWhileRecording, setTakeSpeed, TAKE_SPEEDS } from '../../../audio/recorder.ts'
 import {
   COUNT_IN_OPTIONS,
@@ -18,6 +19,7 @@ import {
   updateSettings,
 } from '../../../project/projectStore.ts'
 import type { CountInBars, LoopBars, TimeSignature } from '../../../project/projectStore.ts'
+import { getMultiFingerPinch, subscribeToMultiFingerPinch } from '../../../vision/pinchAccurate.ts'
 import { useProject } from '../../hooks.ts'
 import { ChipSelect } from '../components/ChipSelect.tsx'
 import { OutlineButton } from '../components/OutlineButton.tsx'
@@ -91,6 +93,7 @@ function SettingsBody(props: { showMic: boolean }) {
   const recorder = useRecorder()
   // Changing these mid-take would break the take.
   const takeRunning = recorder.status !== 'idle'
+  const multiFinger = useSyncExternalStore(subscribeToMultiFingerPinch, getMultiFingerPinch)
 
   return (
     <div className="settings-body">
@@ -159,6 +162,24 @@ function SettingsBody(props: { showMic: boolean }) {
             on={recorder.muteLayersWhileRecording}
             label="Mute other layers while recording"
             onChange={setMuteLayersWhileRecording}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+
+      {/* Hand notes (team option; SPEC 3.4 default is one note per hand). */}
+      <SettingsGroup title="Melody">
+        <SettingsRow
+          label="Multi-finger notes"
+          title="Off: one note per hand. On: several fingers on one hand can play at once."
+        >
+          <ToggleSwitch
+            on={multiFinger}
+            label="Let one hand play several notes at once"
+            onChange={(on) => {
+              if (!takeRunning) {
+                setMultiFingerNotes(on)
+              }
+            }}
           />
         </SettingsRow>
       </SettingsGroup>

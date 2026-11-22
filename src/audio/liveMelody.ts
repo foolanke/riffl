@@ -18,7 +18,7 @@ import { getGuideHands } from '../vision/melodyGuide.ts'
 import type { FingerName, GuideHand } from '../vision/melodyGuide.ts'
 import { getPinchDistances, resetPinch, updatePinch } from '../vision/pinch.ts'
 import type { PinchDistances } from '../vision/pinch.ts'
-import { resetAccuratePinch, updateAccuratePinch } from '../vision/pinchAccurate.ts'
+import { resetAccuratePinch, setMultiFingerPinch, updateAccuratePinch } from '../vision/pinchAccurate.ts'
 import type { BlockReason } from '../vision/pinchAccurate.ts'
 import { applyAccidental, getNotesToPlay } from './instruments.ts'
 import type { Accidental, InstrumentName } from './instruments.ts'
@@ -91,9 +91,9 @@ const heldFingers: Record<HandSide, Map<FingerName, HeldNote>> = { left: new Map
 const openLogFingers: Record<HandSide, Map<FingerName, RecordedNote>> = { left: new Map(), right: new Map() }
 
 // The designed page turns on the more robust pinch detection
-// (vision/pinchAccurate.ts), which also lets one hand pinch several
-// fingers at once, each playing its own note (the human overrode SPEC 3.4
-// for the designed page). The test page never calls this, so it keeps
+// (vision/pinchAccurate.ts). One note per hand by default; with the
+// "Multi-finger notes" setting on, several fingers at once, each playing
+// its own note. The test page never calls this, so it keeps
 // the original detection in vision/pinch.ts and one note per hand.
 let accuratePinch = false
 
@@ -103,6 +103,13 @@ export function setAccuratePinch(on: boolean): void {
   }
   stopAllNotes()
   accuratePinch = on
+}
+
+// Designed page setting: several notes per hand (true) or one (false,
+// the default, SPEC 3.4). Held notes stop so nothing hangs mid-switch.
+export function setMultiFingerNotes(on: boolean): void {
+  stopAllNotes()
+  setMultiFingerPinch(on)
 }
 
 // This frame's pinched fingers for one hand, with whichever detector is
