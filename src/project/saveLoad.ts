@@ -23,6 +23,7 @@ import {
 } from './projectStore.ts'
 import type {
   Box,
+  OutlinePoint,
   DrumLayer,
   Layer,
   MelodyLayer,
@@ -225,13 +226,37 @@ function parseObjects(data: unknown[]): TrackedObject[] {
     if (drum === null || box === null) {
       continue
     }
-    objects.push({
+    const object: TrackedObject = {
       id: typeof item.id === 'string' ? item.id : crypto.randomUUID(),
       drum: drum,
       box: box,
-    })
+    }
+    const outline = parseOutline(item.outline)
+    if (outline !== null) {
+      object.outline = outline
+    }
+    objects.push(object)
   }
   return objects
+}
+
+// An object's silhouette: at least 3 points on the camera image (0..1).
+// Optional; anything malformed is dropped and the plain box is shown.
+function parseOutline(data: unknown): OutlinePoint[] | null {
+  if (!Array.isArray(data) || data.length < 3) {
+    return null
+  }
+  const points: OutlinePoint[] = []
+  for (const item of data) {
+    if (!isObject(item) || typeof item.x !== 'number' || typeof item.y !== 'number') {
+      return null
+    }
+    if (item.x < 0 || item.x > 1 || item.y < 0 || item.y > 1) {
+      return null
+    }
+    points.push({ x: item.x, y: item.y })
+  }
+  return points
 }
 
 // A box must lie inside the camera image (0..1) and have some size.

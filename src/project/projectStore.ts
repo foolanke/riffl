@@ -73,11 +73,20 @@ export interface Box {
   height: number
 }
 
+// A point on the camera image (0..1, not mirrored).
+export interface OutlinePoint {
+  x: number
+  y: number
+}
+
 // A physical object on the table (SPEC 1.2): one fixed box, one drum.
+// `outline` is the object's silhouette inside the box, for display only;
+// hit confirmation always uses the box (SPEC 1.4).
 export interface TrackedObject {
   id: string
   drum: DrumName
   box: Box
+  outline?: OutlinePoint[]
 }
 
 export interface Project {
@@ -247,6 +256,19 @@ export function setObjectDrum(objectId: string, drum: DrumName): void {
   for (const object of currentProject.objects) {
     if (object.id === objectId) {
       updated.push({ ...object, drum: drum })
+    } else {
+      updated.push(object)
+    }
+  }
+  setProject({ ...currentProject, objects: updated })
+}
+
+// Saves the traced silhouette of an object (display only, not undoable).
+export function setObjectOutline(objectId: string, outline: OutlinePoint[]): void {
+  const updated: TrackedObject[] = []
+  for (const object of currentProject.objects) {
+    if (object.id === objectId) {
+      updated.push({ ...object, outline: outline })
     } else {
       updated.push(object)
     }

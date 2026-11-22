@@ -7,15 +7,22 @@
 // placed with the same image fit the melody guide uses, and the "hand inside"
 // highlight (step 22) and tap ripples read the engine directly. React only
 // re-renders when the objects themselves change (SPEC 0.1).
+//
+// Once the camera runs, each object's silhouette is traced (vision/silhouette.ts)
+// and drawn instead of the corner brackets: a white outline with a
+// translucent, diagonally hatched fill. Until then (or if tracing finds
+// nothing), the corner brackets of design.md 5.17 are shown.
 import { useEffect, useRef } from 'react'
 import type { PointerEvent } from 'react'
 import { getDrumLabel } from '../../../audio/drums.ts'
 import { onLiveHit } from '../../../audio/mic.ts'
-import { getProject } from '../../../project/projectStore.ts'
-import type { Box, TrackedObject } from '../../../project/projectStore.ts'
+import { getProject, setObjectOutline } from '../../../project/projectStore.ts'
+import type { Box, OutlinePoint, TrackedObject } from '../../../project/projectStore.ts'
+import { getCameraVideo } from '../../../vision/camera.ts'
 import { getLatestHandFrame } from '../../../vision/handTracking.ts'
 import type { HandPoint } from '../../../vision/handTracking.ts'
 import { MIN_BOX_SIZE, findObjectAtPoint, isPointInBox, makeBoxFromCorners } from '../../../vision/objects.ts'
+import { traceSilhouette } from '../../../vision/silhouette.ts'
 import { useProject } from '../../hooks.ts'
 import { ICONS } from '../icons.ts'
 import { boxToPanel, getImageFit, imageToPanel, panelToImage } from './imageFit.ts'
@@ -51,6 +58,7 @@ export function ObjectMarkers(props: ObjectMarkersProps) {
         updateMarkers(layer)
         updateDraft(layer, draftRef.current, dragRef.current)
       }
+      traceMissingOutlines()
       frameId = requestAnimationFrame(draw)
     }
     frameId = requestAnimationFrame(draw)
@@ -131,13 +139,27 @@ export function ObjectMarkers(props: ObjectMarkersProps) {
 }
 
 function ObjectMarker(props: { object: TrackedObject; linked: boolean; editable: boolean; onDelete: () => void }) {
+  const outline = props.object.outline
+  let className = 'object-marker'
+  if (props.linked) {
+    className += ' is-linked'
+  }
+  if (outline) {
+    className += ' has-silhouette'
+  }
   return (
     // Placed by the frame loop (left/top/width/height), found by data-id.
-    <div className={'object-marker' + (props.linked ? ' is-linked' : '')} data-id={props.object.id}>
-      <img className="object-corner is-tl" src={ICONS.cornerTl} alt="" />
-      <img className="object-corner is-tr" src={ICONS.cornerTr} alt="" />
-      <img className="object-corner is-bl" src={ICONS.cornerBl} alt="" />
-      <img className="object-corner is-br" src={ICONS.cornerBr} alt="" />
+    <div className={className} data-id={props.object.id}>
+      {outline ? (
+        <Silhouette objectId={props.object.id} box={props.object.box} outline={outline} />
+      ) : (
+        <>
+          <img className="object-corner is-tl" src={ICONS.cornerTl} alt="" />
+          <img className="object-corner is-tr" src={ICONS.cornerTr} alt="" />
+          <img className="object-corner is-bl" src={ICONS.cornerBl} alt="" />
+          <img className="object-corner is-br" src={ICONS.cornerBr} alt="" />
+        </>
+      )}
       <div className="object-tag text-label">
         <span>Object · {getDrumLabel(props.object.drum)}</span>
         {props.editable ? (
@@ -159,6 +181,69 @@ function ObjectMarker(props: { object: TrackedObject; linked: boolean; editable:
       </div>
     </div>
   )
+}
+
+// The object's outline inside its marker. Points are given as fractions of
+// the marker box (0..1, mirrored like the camera image), so the shape follows
+// the marker wherever the frame loop places it. The fill is a CSS hatch on a
+// div clipped to the same shape, so the hatch lines keep a fixed pixel
+// spacing; the stroke keeps a fixed width (non-scaling-stroke).
+function Silhouette(props: { objectId: string; box: Box; outline: OutlinePoint[] }) {
+  const clipId = 'object-clip-' + props.objectId
+  const points = outlineToBoxFractions(props.outline, props.box)
+  return (
+    <>
+      <div className="object-silhouette-fill" style={{ clipPath: 'url(#' + clipId + ')' }} />
+      <svg className="object-silhouette" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <clipPath id={clipId} clipPathUnits="objectBoundingBox">
+            <polygon points={points} />
+          </clipPath>
+        </defs>
+        <polygon className="object-silhouette-line" points={points} vectorEffect="non-scaling-stroke" />
+      </svg>
+    </>
+  )
+}
+
+// "u,v u,v ..." with u, v as fractions of the box on screen. Screen left is
+// the image's right (the camera is mirrored), so u counts from the box's right edge.
+function outlineToBoxFractions(outline: OutlinePoint[], box: Box): string {
+  const parts: string[] = []
+  for (const point of outline) {
+    const u = (box.x + box.width - point.x) / box.width
+    const v = (point.y - box.y) / box.height
+    parts.push(u.toFixed(4) + ',' + v.toFixed(4))
+  }
+  return parts.join(' ')
+}
+
+// ---- Silhouette tracing ----
+// Each object is traced once per page visit, as soon as the camera shows a
+// picture. Objects already traced (saved outline) are skipped.
+const outlineAttempts = new Set<string>()
+
+function traceMissingOutlines() {
+  const video = getCameraVideo()
+  if (!video || video.videoWidth === 0 || video.readyState < 2) {
+    return
+  }
+  for (const object of getProject().objects) {
+    if (object.outline || outlineAttempts.has(object.id)) {
+      continue
+    }
+    outlineAttempts.add(object.id)
+    traceSilhouette(video, object.box)
+      .then(function (outline) {
+        // The object may have been deleted while tracing.
+        if (outline && findById(getProject().objects, object.id)) {
+          setObjectOutline(object.id, outline)
+        }
+      })
+      .catch(function (error) {
+        console.warn('Could not trace object silhouette', error)
+      })
+  }
 }
 
 // ---- Coordinates ----
