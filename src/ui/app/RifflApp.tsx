@@ -82,7 +82,7 @@ export function RifflApp() {
             ) : null
           }
         />
-        <LayersPanel items={cards.items} />
+        <LayersPanel items={cards.items} recordingKey={cards.recordingKey} />
       </div>
       <Sidebar cards={cards} cameraOk={cameraOk} />
     </div>

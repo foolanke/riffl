@@ -1,5 +1,5 @@
 // The sidebar (design.md 3.1, 4.2): brand badge, ADD LAYER, metronome strip, the layer
-// cards (active card first, expanded), then camera check, calibration and
+// cards (fixed creation order; the active one expanded), then camera check, calibration and
 // the Download button pinned to the bottom.
 import { downloadProjectFile } from '../../../project/saveLoad.ts'
 import { useProject } from '../../hooks.ts'

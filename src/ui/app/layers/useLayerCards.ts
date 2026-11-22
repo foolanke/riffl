@@ -27,7 +27,7 @@ import type { DraftLayer, LayerItem, LayerSound } from './layerItems.ts'
 export interface LayerCards {
   items: LayerItem[] // oldest first: recorded layers, then drafts
   activeItem: LayerItem | null
-  cardOrder: LayerItem[] // the sidebar's order: the active card first (design.md 4.2)
+  cardOrder: LayerItem[] // the sidebar's order: same as items, fixed (not active-first)
   recordingKey: string | null // the card whose take is in progress
   isExpanded: (item: LayerItem) => boolean // only the active card can be open
   activate: (item: LayerItem) => void // another card: make it active and open; the active one: open/close it
@@ -58,15 +58,11 @@ export function useLayerCards(): LayerCards {
     activeItem = items[items.length - 1]
   }
 
-  const cardOrder: LayerItem[] = []
-  if (activeItem) {
-    cardOrder.push(activeItem)
-  }
-  for (const item of items) {
-    if (activeItem === null || item.key !== activeItem.key) {
-      cardOrder.push(item)
-    }
-  }
+  // Cards stay where they are, in creation order (layers, then drafts), so a
+  // card keeps its place and number when another is clicked or muted. This
+  // used to move the active card to the top (design.md 4.2/4.3); the human
+  // asked for fixed positions instead.
+  const cardOrder: LayerItem[] = items
 
   function isExpanded(item: LayerItem): boolean {
     return activeItem !== null && item.key === activeItem.key && !activeCollapsed

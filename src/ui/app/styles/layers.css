@@ -60,8 +60,38 @@
   border-radius: var(--radius);
 }
 
-.track-row.is-muted {
+/* Muted row (design.md 8): everything at 0.4 except the mute button, so
+   it stays readable as the way back to unmuted. */
+.track-row.is-muted > :not(.track-mute) {
   opacity: 0.4;
+}
+
+/* Mute toggle: a bare 16px volume icon button. Hover/focus follow design.md 8. */
+.track-mute {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+}
+
+.track-mute:hover {
+  border-color: var(--color-fg-muted);
+}
+
+.track-mute:active {
+  opacity: 0.8;
+}
+
+.track-mute:focus-visible {
+  outline: 1px solid white;
+  outline-offset: 2px;
 }
 
 .track-label {
@@ -126,6 +156,12 @@
    every take otherwise); they just stop reacting. */
 .step.is-toggle:disabled {
   cursor: default;
+}
+
+/* The step a running take is on (not designed; the human asked for it):
+   a white ring, like keyboard focus, so it reads on empty and filled dots. */
+.step.is-current::after {
+  box-shadow: 0 0 0 2px var(--color-fg);
 }
 
 /* ---- 5.14 Score track (melody layers), one slot per 16th ---- */
