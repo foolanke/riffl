@@ -28,6 +28,100 @@ interface NotePlayer {
 }
 
 const voices = new Map<InstrumentName, Record<HandSide, MelodyVoice>>()
+
+// ---- Sample files, loaded once and trimmed ----
+// The MP3 samples start with silence (encoder padding plus a little air):
+// about 28 ms on every guitar note. Played as-is, every pinch would sound
+// that much late. So each file is loaded once, the silence before the
+// first audible sample is cut off, and the trimmed buffer is shared by
+// every Sampler that uses it.
+const GUITAR_FILES: Record<string, string> = {
+  C3: 'C3.mp3', 'D#3': 'Ds3.mp3', 'F#3': 'Fs3.mp3', A3: 'A3.mp3',
+  C4: 'C4.mp3', 'D#4': 'Ds4.mp3', 'F#4': 'Fs4.mp3', A4: 'A4.mp3',
+  C5: 'C5.mp3', 'D#5': 'Ds5.mp3', 'F#5': 'Fs5.mp3', A5: 'A5.mp3',
+  C6: 'C6.mp3',
+}
+const PIANO_FILES: Record<string, string> = {
+  A3: 'A3.mp3', C4: 'C4.mp3', 'D#4': 'Ds4.mp3', 'F#4': 'Fs4.mp3',
+  A4: 'A4.mp3', C5: 'C5.mp3', 'D#5': 'Ds5.mp3', 'F#5': 'Fs5.mp3',
+  A5: 'A5.mp3', C6: 'C6.mp3', 'D#6': 'Ds6.mp3', 'F#6': 'Fs6.mp3',
+  A6: 'A6.mp3', C7: 'C7.mp3',
+}
+const FLUTE_FILES: Record<string, string> = {
+  C4: 'C4.mp3', E4: 'E4.mp3', A4: 'A4.mp3', C5: 'C5.mp3', E5: 'E5.mp3',
+  A5: 'A5.mp3', C6: 'C6.mp3', E6: 'E6.mp3', A6: 'A6.mp3', C7: 'C7.mp3',
+}
+const BASS808_FILES: Record<string, string> = { G1: '808.wav' }
+
+const SAMPLE_FOLDERS: { folder: string; files: Record<string, string> }[] = [
+  { folder: 'samples/guitar/', files: GUITAR_FILES },
+  { folder: 'samples/piano/', files: PIANO_FILES },
+  { folder: 'samples/flute/', files: FLUTE_FILES },
+  { folder: 'samples/', files: BASS808_FILES },
+]
+
+// Silence threshold: 1% of the file's peak (-40 dB). Keep 1 ms before the
+// first sample above it, so the attack itself isn't clipped (no click).
+const SILENCE_FRACTION = 0.01
+const KEEP_BEFORE_ONSET_SECONDS = 0.001
+
+const trimmedBuffers = new Map<string, AudioBuffer>() // key: full url
+
+async function loadTrimmedSamples(): Promise<void> {
+  const loads: Promise<void>[] = []
+  for (const group of SAMPLE_FOLDERS) {
+    for (const file of Object.values(group.files)) {
+      const url = import.meta.env.BASE_URL + group.folder + file
+      if (trimmedBuffers.has(url)) {
+        continue
+      }
+      loads.push(
+        Tone.ToneAudioBuffer.fromUrl(url).then(function (buffer) {
+          trimmedBuffers.set(url, trimLeadingSilence(buffer))
+        }),
+      )
+    }
+  }
+  await Promise.all(loads)
+}
+
+function trimLeadingSilence(buffer: Tone.ToneAudioBuffer): AudioBuffer {
+  const audio = buffer.get() as AudioBuffer
+  let peak = 0
+  for (let channel = 0; channel < audio.numberOfChannels; channel++) {
+    const data = audio.getChannelData(channel)
+    for (let i = 0; i < data.length; i++) {
+      peak = Math.max(peak, Math.abs(data[i]))
+    }
+  }
+  const threshold = peak * SILENCE_FRACTION
+  let onset = audio.length
+  for (let channel = 0; channel < audio.numberOfChannels; channel++) {
+    const data = audio.getChannelData(channel)
+    for (let i = 0; i < data.length && i < onset; i++) {
+      if (Math.abs(data[i]) > threshold) {
+        onset = i
+        break
+      }
+    }
+  }
+  const start = Math.max(0, onset - Math.round(KEEP_BEFORE_ONSET_SECONDS * audio.sampleRate))
+  if (start === 0 || start >= audio.length) {
+    return audio
+  }
+  return buffer.slice(start / audio.sampleRate).get() as AudioBuffer
+}
+
+// The urls map for a Sampler: trimmed buffers where loaded, file names otherwise.
+function samplerUrls(folder: string, files: Record<string, string>): Record<string, AudioBuffer | string> {
+  const urls: Record<string, AudioBuffer | string> = {}
+  for (const note of Object.keys(files)) {
+    const url = import.meta.env.BASE_URL + folder + files[note]
+    const trimmed = trimmedBuffers.get(url)
+    urls[note] = trimmed !== undefined ? trimmed : url
+  }
+  return urls
+}
 // The note player behind each hand's voice, so finger voices (below) can
 // share it instead of building (and loading) more synths.
 const handPlayers = new Map<InstrumentName, Record<HandSide, CountedPlayer>>()
@@ -44,6 +138,7 @@ export async function loadMelodyInstruments(): Promise<void> {
   if (voices.size > 0) {
     return
   }
+  await loadTrimmedSamples()
   for (const instrument of INSTRUMENTS) {
     const leftPlayer = createNotePlayer(instrument.name)
     const rightPlayer = createNotePlayer(instrument.name)
@@ -168,22 +263,7 @@ function createNotePlayer(instrument: InstrumentName): NotePlayer {
     // real guitar samples. A short release keeps it plucky: let go of the
     // pinch and the string is damped.
     const sampler = new Tone.Sampler({
-      urls: {
-        C3: 'C3.mp3',
-        'D#3': 'Ds3.mp3',
-        'F#3': 'Fs3.mp3',
-        A3: 'A3.mp3',
-        C4: 'C4.mp3',
-        'D#4': 'Ds4.mp3',
-        'F#4': 'Fs4.mp3',
-        A4: 'A4.mp3',
-        C5: 'C5.mp3',
-        'D#5': 'Ds5.mp3',
-        'F#5': 'Fs5.mp3',
-        A5: 'A5.mp3',
-        C6: 'C6.mp3',
-      },
-      baseUrl: import.meta.env.BASE_URL + 'samples/guitar/',
+      urls: samplerUrls('samples/guitar/', GUITAR_FILES),
       release: 0.15,
     }).connect(output)
     return sampler
@@ -209,23 +289,7 @@ function createNotePlayer(instrument: InstrumentName): NotePlayer {
   if (instrument === 'piano') {
     // Real piano samples every 3 semitones; the Sampler fills the gaps.
     const sampler = new Tone.Sampler({
-      urls: {
-        A3: 'A3.mp3',
-        C4: 'C4.mp3',
-        'D#4': 'Ds4.mp3',
-        'F#4': 'Fs4.mp3',
-        A4: 'A4.mp3',
-        C5: 'C5.mp3',
-        'D#5': 'Ds5.mp3',
-        'F#5': 'Fs5.mp3',
-        A5: 'A5.mp3',
-        C6: 'C6.mp3',
-        'D#6': 'Ds6.mp3',
-        'F#6': 'Fs6.mp3',
-        A6: 'A6.mp3',
-        C7: 'C7.mp3',
-      },
-      baseUrl: import.meta.env.BASE_URL + 'samples/piano/',
+      urls: samplerUrls('samples/piano/', PIANO_FILES),
       release: 1,
     }).connect(output)
     return sampler
@@ -257,19 +321,7 @@ function createNotePlayer(instrument: InstrumentName): NotePlayer {
     // a release long enough to breathe out, like the Mask Off loop.
     // The low flute plays the same samples an octave down (getNotesToPlay).
     const sampler = new Tone.Sampler({
-      urls: {
-        C4: 'C4.mp3',
-        E4: 'E4.mp3',
-        A4: 'A4.mp3',
-        C5: 'C5.mp3',
-        E5: 'E5.mp3',
-        A5: 'A5.mp3',
-        C6: 'C6.mp3',
-        E6: 'E6.mp3',
-        A6: 'A6.mp3',
-        C7: 'C7.mp3',
-      },
-      baseUrl: import.meta.env.BASE_URL + 'samples/flute/',
+      urls: samplerUrls('samples/flute/', FLUTE_FILES),
       attack: 0.02,
       release: 0.35,
     }).connect(output)
@@ -278,8 +330,7 @@ function createNotePlayer(instrument: InstrumentName): NotePlayer {
   // bass808: the 808 drum sample, pitched to the note. The sample is
   // about 50 Hz, which is G1, so it's mapped there.
   const sampler = new Tone.Sampler({
-    urls: { G1: '808.wav' },
-    baseUrl: import.meta.env.BASE_URL + 'samples/',
+    urls: samplerUrls('samples/', BASS808_FILES),
     release: 0.6,
   }).connect(output)
   return sampler

@@ -7,8 +7,14 @@
 // Drawn on a canvas every screen frame from the engine (hand tracking and
 // liveMelody), so React never re-renders per frame (SPEC 0.1).
 import { useEffect, useRef } from 'react'
-import { getHeldNotes, getLastFlatPinchDistances, getLastPinchDistances } from '../../../audio/liveMelody.ts'
-import { getLatestHandFrame } from '../../../vision/handTracking.ts'
+import * as Tone from 'tone'
+import {
+  getHeldNotes,
+  getLastFlatPinchDistances,
+  getLastPinchBlocks,
+  getLastPinchDistances,
+} from '../../../audio/liveMelody.ts'
+import { getLatestHandFrame, getTrackingTimings } from '../../../vision/handTracking.ts'
 import type { HandPoint, HandSide } from '../../../vision/handTracking.ts'
 import {
   COLUMN_COUNT,
@@ -152,6 +158,11 @@ function drawGuide(canvas: HTMLCanvasElement) {
         if (flatDistances !== null) {
           text += ' / ' + flatDistances[finger.finger].toFixed(2)
         }
+        // Why it didn't play, if something blocked it (ACROSS / DEPTH / EXTRA).
+        const blocks = getLastPinchBlocks(hand.side)
+        if (blocks !== null && blocks[finger.finger] !== '') {
+          text += ' ' + blocks[finger.finger].toUpperCase()
+        }
         drawPill(context, text, tip.x, tip.y - 46, COLOR_OVERLAY, COLOR_FG_MUTED, 4)
       }
     }
@@ -170,7 +181,24 @@ function drawGuide(canvas: HTMLCanvasElement) {
     context.letterSpacing = '1.44px'
     drawPill(context, playing.join('  '), layoutWidth / 2, 15 + 36, COLOR_OVERLAY, COLOR_FG, 8, 72)
   }
+  if (SHOW_PINCH_DEBUG) {
+    drawTimingReadout(context, layoutWidth)
+  }
   context.letterSpacing = '0px'
+}
+
+// Where the pinch-to-sound time goes (/?pinchdebug): camera frame rate,
+// model time per frame, how frames reach us, and the audio output delay
+// reported by the browser (Bluetooth speakers add a lot here).
+function drawTimingReadout(context: CanvasRenderingContext2D, layoutWidth: number) {
+  const timings = getTrackingTimings()
+  const audio = Tone.getContext().rawContext as AudioContext
+  const audioMs = ((audio.baseLatency || 0) + (audio.outputLatency || 0)) * 1000
+  const text =
+    'CAMERA ' + timings.fps + ' FPS · TRACKING ' + timings.detectMs.toFixed(0) + ' MS · ' +
+    (timings.source === 'stream' ? 'FAST FRAMES' : 'VIDEO FRAMES') + ' · AUDIO OUT ' + audioMs.toFixed(0) + ' MS'
+  context.font = FONT_LABEL
+  drawPill(context, text, layoutWidth / 2, 110, COLOR_OVERLAY, COLOR_FG_MUTED, 4)
 }
 
 // Thin bones and small joint dots for one hand.

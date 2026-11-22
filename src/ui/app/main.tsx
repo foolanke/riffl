@@ -4,6 +4,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { setAccuratePinch } from '../../audio/liveMelody.ts'
 import { initAutoSave } from '../../project/saveLoad.ts'
+import { setFastFrames } from '../../vision/handTracking.ts'
 import { RifflApp } from './RifflApp.tsx'
 import './styles/tokens.css'
 import './styles/app.css'
@@ -27,6 +28,10 @@ initAutoSave()
 // The designed page uses the more robust pinch detection (3D distances,
 // smoothing, overlap rejection; see vision/pinchAccurate.ts).
 setAccuratePinch(true)
+
+// Track each camera frame the moment it arrives, not when it is shown
+// (about one frame sooner from pinch to sound; see vision/handTracking.ts).
+setFastFrames(true)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

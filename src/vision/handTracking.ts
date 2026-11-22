@@ -53,6 +53,30 @@ let framesThisSecond = 0
 let secondStartTime = 0
 let trackingFps = 0
 
+// Timing readout (designed page, /?pinchdebug): how long the model takes
+// per frame, averaged, and which way frames reach us.
+let detectMsAverage = 0
+let frameSource: 'video' | 'stream' = 'video'
+
+// ---- Fast frames (designed page only, additive) ----
+// By default frames come from the <video> element's requestVideoFrameCallback,
+// which fires when Chrome is about to SHOW a frame: up to one frame later
+// than it arrived from the camera. With fast frames on, frames are read
+// straight off the camera track as they arrive (MediaStreamTrackProcessor,
+// Chrome only) and tracked at once. Falls back to the video element if the
+// browser doesn't support it. The test page never turns this on.
+let fastFrames = false
+
+// Call before startHandTracking().
+export function setFastFrames(on: boolean): void {
+  fastFrames = on
+}
+
+// Chrome exposes this on the main thread; TypeScript's DOM types don't have it.
+interface TrackProcessorConstructor {
+  new (init: { track: MediaStreamTrack; maxBufferSize?: number }): { readable: ReadableStream<VideoFrame> }
+}
+
 export async function startHandTracking(video: HTMLVideoElement): Promise<void> {
   if (trackingStarted) {
     return
@@ -64,9 +88,65 @@ export async function startHandTracking(video: HTMLVideoElement): Promise<void> 
     trackingStarted = false
     throw error
   }
+  if (fastFrames && startStreamFrames(video)) {
+    return
+  }
   video.requestVideoFrameCallback(function (now, metadata) {
     handleVideoFrame(video, now, metadata)
   })
+}
+
+// Starts reading frames straight off the camera track. False if this
+// browser can't, so the caller uses the video element instead.
+function startStreamFrames(video: HTMLVideoElement): boolean {
+  const Processor = (window as unknown as { MediaStreamTrackProcessor?: TrackProcessorConstructor })
+    .MediaStreamTrackProcessor
+  const stream = video.srcObject
+  if (Processor === undefined || !(stream instanceof MediaStream)) {
+    return false
+  }
+  const tracks = stream.getVideoTracks()
+  if (tracks.length === 0) {
+    return false
+  }
+  // A clone, so reading frames here never affects the picture on screen.
+  // maxBufferSize 1: if tracking ever falls behind, old frames are dropped
+  // and we always work on the newest one instead of building up a queue.
+  const processor = new Processor({ track: tracks[0].clone(), maxBufferSize: 1 })
+  const reader = processor.readable.getReader()
+  frameSource = 'stream'
+  let lastTimestamp = 0
+
+  async function readLoop() {
+    for (;;) {
+      const { value: frame, done } = await reader.read()
+      if (done || !frame) {
+        return
+      }
+      // Arrival time stands in for capture time: it is when the frame
+      // reached the page. The camera lag check measures what is left.
+      // MediaPipe needs strictly increasing timestamps.
+      let arrival = performance.now()
+      if (arrival <= lastTimestamp) {
+        arrival = lastTimestamp + 0.01
+      }
+      lastTimestamp = arrival
+      try {
+        const aspect = frame.displayHeight > 0 ? frame.displayWidth / frame.displayHeight : 16 / 9
+        trackFrame(frame, arrival, arrival, aspect)
+      } finally {
+        frame.close()
+      }
+    }
+  }
+  readLoop().catch(function (error) {
+    console.warn('Fast camera frames stopped, using the video element.', error)
+    frameSource = 'video'
+    video.requestVideoFrameCallback(function (now, metadata) {
+      handleVideoFrame(video, now, metadata)
+    })
+  })
+  return true
 }
 
 export function isHandTrackingRunning(): boolean {
@@ -94,8 +174,23 @@ async function createLandmarker(): Promise<HandLandmarker> {
 
 // Called by the browser once for every new camera frame.
 function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoFrameCallbackMetadata): void {
+  // When the camera took the picture, if the browser knows. This matters
+  // for matching hands to mic hits: the frame reaches us tens of ms later.
+  const captureTime = metadata.captureTime !== undefined ? metadata.captureTime : now
+  const aspect = video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 16 / 9
+  trackFrame(video, now, captureTime, aspect)
+  video.requestVideoFrameCallback(function (nextNow, nextMetadata) {
+    handleVideoFrame(video, nextNow, nextMetadata)
+  })
+}
+
+// Runs the model on one frame and hands the result to everyone listening.
+function trackFrame(image: HTMLVideoElement | VideoFrame, now: number, captureTime: number, aspect: number): void {
   if (landmarker) {
-    const result = landmarker.detectForVideo(video, now)
+    const detectStart = performance.now()
+    const result = landmarker.detectForVideo(image, now)
+    const detectMs = performance.now() - detectStart
+    detectMsAverage = detectMsAverage === 0 ? detectMs : detectMsAverage * 0.9 + detectMs * 0.1
     const hands: HandPoint[][] = []
     for (const handLandmarks of result.landmarks) {
       const points: HandPoint[] = []
@@ -113,10 +208,6 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
       world.push(points)
     }
     const sides = getHandSides(result.handedness, hands)
-    // When the camera took the picture, if the browser knows. This matters
-    // for matching hands to mic hits: the frame reaches us tens of ms later.
-    const captureTime = metadata.captureTime !== undefined ? metadata.captureTime : now
-    const aspect = video.videoHeight > 0 ? video.videoWidth / video.videoHeight : 16 / 9
     latestFrame = { time: captureTime, hands: hands, sides: sides, aspect: aspect, world: world }
     if (isRecordingFrames) {
       recordedFrames.push(latestFrame)
@@ -126,9 +217,6 @@ function handleVideoFrame(video: HTMLVideoElement, now: number, metadata: VideoF
     }
     countFrame(now)
   }
-  video.requestVideoFrameCallback(function (nextNow, nextMetadata) {
-    handleVideoFrame(video, nextNow, nextMetadata)
-  })
 }
 
 // MediaPipe's label is used as-is: tested on the demo laptop, its "Left"
@@ -189,4 +277,9 @@ export function getLatestHandFrame(): HandFrame {
 
 export function getTrackingFps(): number {
   return trackingFps
+}
+
+// For the designed page's /?pinchdebug readout.
+export function getTrackingTimings(): { fps: number; detectMs: number; source: 'video' | 'stream' } {
+  return { fps: trackingFps, detectMs: detectMsAverage, source: frameSource }
 }

@@ -19,6 +19,7 @@ import type { FingerName, GuideHand } from '../vision/melodyGuide.ts'
 import { getPinchDistances, resetPinch, updatePinch } from '../vision/pinch.ts'
 import type { PinchDistances } from '../vision/pinch.ts'
 import { resetAccuratePinch, updateAccuratePinch } from '../vision/pinchAccurate.ts'
+import type { BlockReason } from '../vision/pinchAccurate.ts'
 import { getNotesToPlay } from './instruments.ts'
 import type { InstrumentName } from './instruments.ts'
 import { getFingerVoice, getMelodyVoice } from './melodySynths.ts'
@@ -51,6 +52,8 @@ const lastDistances: Record<HandSide, PinchDistances | null> = { left: null, rig
 const lastFlatDistances: Record<HandSide, PinchDistances | null> = { left: null, right: null }
 // Accurate pinch only: held fingers that struck again this frame (fast repeats).
 const lastRetriggered: Record<HandSide, FingerName[]> = { left: [], right: [] }
+// Accurate pinch only: why close fingers didn't play, for the readout.
+const lastBlocked: Record<HandSide, Record<FingerName, BlockReason> | null> = { left: null, right: null }
 
 // Camera lag check (step 28): while set, live notes are silent and every
 // new pinch reports the camera time (ms, performance.now clock) of the
@@ -105,6 +108,7 @@ function detectPinches(side: HandSide, hand: GuideHand, frame: HandFrame): Finge
     lastDistances[side] = result.distances
     lastFlatDistances[side] = result.flatDistances
     lastRetriggered[side] = result.retriggered
+    lastBlocked[side] = result.blocked
     return result.fingers
   }
   const distances = getPinchDistances(hand.points, frame.aspect)
@@ -453,6 +457,11 @@ export function getHeldNotes(side: HandSide): HeldNote[] {
 // Latest pinch distances per hand, for the tuning readout.
 export function getLastPinchDistances(side: HandSide): PinchDistances | null {
   return lastDistances[side]
+}
+
+// Why close fingers didn't play (accurate pinch only), for the readout.
+export function getLastPinchBlocks(side: HandSide): Record<FingerName, BlockReason> | null {
+  return lastBlocked[side]
 }
 
 // Flat-picture distances (accurate pinch only), for the designed page's readout.

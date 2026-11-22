@@ -12,6 +12,8 @@
 //    0.46 and 0.76 in 3D but 0.11 flat; false notes read 0.37-0.38 in 3D
 //    but 0.38-0.46 flat. So a touch is judged on the flat distance, and the
 //    3D distance only vetoes a finger that is very far away in depth.
+//    Second way in: a touch that reads 0.25 in both is real too, so when
+//    3D and flat both say "fairly close" (AGREE_DISTANCE) it also counts.
 // 2. Hand size that survives tilting. Flat distances are divided by the
 //    hand's size in the picture. Wrist-to-knuckle shrinks when the hand
 //    points at the camera, so we also use the knuckle width and take the
@@ -21,8 +23,10 @@
 //    on the tip, the other next to it on the pad. So each finger's distance
 //    is to the closest point on the thumb's last segment near the tip.
 // 4. Thumb lying across a finger is ignored: if the spot where the thumb
-//    is closest is nearer the finger's middle joint than its tip, it is an
-//    overlap, not a pinch.
+//    is clearly nearer the finger's middle joint than its tip, it is an
+//    overlap, not a pinch. Skipped when the finger points at the camera:
+//    then its tip and middle joint overlap in the picture and the check
+//    blocked real pinches (a 0.24/0.17 touch was missed this way).
 // 5. Relative test for extra fingers. A curled neighbour finger can rest
 //    close to the thumb without touching. A finger that really touches is
 //    about as close as the closest finger, so an extra finger only counts
@@ -42,14 +46,22 @@ import type { HandPoint, HandSide } from './handTracking.ts'
 import type { FingerName } from './melodyGuide.ts'
 import type { PinchDistances } from './pinch.ts'
 
-// Flat distances, in hand sizes in the picture. Readings: a touch about
-// 0.11, a false note 0.38-0.46.
-const PRESS_DISTANCE = 0.2 // counts as touching below this
+// Flat distances, in hand sizes in the picture. Readings (3D / flat):
+// touches 0.20/0.11, 0.46/0.11, 0.76/0.11, 0.25/0.25; false notes
+// 0.37/0.46, 0.38/0.38.
+const PRESS_DISTANCE = 0.2 // flat: counts as touching below this
+const AGREE_DISTANCE = 0.3 // ...or when 3D and flat are both below this
 const RELEASE_MARGIN = 0.15 // let go this far past the pinch's closest point
-const RELEASE_DISTANCE = 0.32 // always let go past this
+const RELEASE_DISTANCE = 0.4 // always let go past this
 // 3D veto (in real hand sizes): further than this is clearly not touching.
 // A real touch was measured at 0.76, so this stays well above that.
 const DEPTH_VETO_DISTANCE = 0.95
+
+// Thumb-across check: the middle joint must be this much closer than the
+// tip, and the finger must look at least this long in the picture (hand
+// sizes, tip to middle joint), or the check is skipped.
+const ACROSS_RATIO = 0.7
+const MIN_FLAT_FINGER_LENGTH = 0.3
 
 // Extra fingers (not the closest one) must also be about as close as the
 // closest finger: within closest * ratio + offset.
@@ -112,7 +124,13 @@ export interface AccuratePinchResult {
   retriggered: FingerName[] // held fingers that struck again this frame (restart their note)
   distances: PinchDistances // 3D, in hand sizes (readout and depth veto)
   flatDistances: PinchDistances // in the flat camera picture: what decides
+  // Why a finger that is close did NOT play, for the /?pinchdebug readout:
+  // 'across' thumb lying across it, 'depth' far apart in 3D,
+  // 'extra' another finger is much closer. '' = not blocked.
+  blocked: Record<FingerName, BlockReason>
 }
+
+export type BlockReason = '' | 'across' | 'depth' | 'extra'
 
 // One frame for one hand. worldPoints give the 3D distance when the
 // tracker has them; otherwise the image points' rough depth is used.
@@ -145,6 +163,7 @@ export function updateAccuratePinch(
   const distances: PinchDistances = { index: 0, middle: 0, ring: 0, pinky: 0 }
   const flatDistances: PinchDistances = { index: 0, middle: 0, ring: 0, pinky: 0 }
   const touching: Record<FingerName, boolean> = { index: false, middle: false, ring: false, pinky: false }
+  const blocked: Record<FingerName, BlockReason> = { index: '', middle: '', ring: '', pinky: '' }
   for (const finger of FINGERS) {
     const name = finger.finger
     const contact = closestPointOnSegment(source[finger.tip], padStart, padEnd)
@@ -154,9 +173,18 @@ export function updateAccuratePinch(
     const flatContact = closestPointOnSegment(flatTip, flatPadStart, flatPadEnd)
     const toTip = getDistance(flatContact, flatTip)
     flatDistances[name] = toTip / flatHandSize
-    const lyingAcross = getDistance(flatContact, flat[finger.pip]) < toTip
+    const flatFingerLength = getDistance(flatTip, flat[finger.pip]) / flatHandSize
+    const lyingAcross =
+      flatFingerLength >= MIN_FLAT_FINGER_LENGTH && getDistance(flatContact, flat[finger.pip]) < toTip * ACROSS_RATIO
 
-    touching[name] = flatDistances[name] < PRESS_DISTANCE && distances[name] < DEPTH_VETO_DISTANCE && !lyingAcross
+    const flatTouch = flatDistances[name] < PRESS_DISTANCE && distances[name] < DEPTH_VETO_DISTANCE
+    const bothClose = flatDistances[name] < AGREE_DISTANCE && distances[name] < AGREE_DISTANCE
+    touching[name] = (flatTouch || bothClose) && !lyingAcross
+    if ((flatTouch || bothClose) && lyingAcross) {
+      blocked[name] = 'across'
+    } else if (flatDistances[name] < PRESS_DISTANCE && !flatTouch && !bothClose) {
+      blocked[name] = 'depth'
+    }
   }
 
   // The closest finger that is touching or still held. Its distance is
@@ -206,6 +234,9 @@ export function updateAccuratePinch(
     } else {
       const wantsPress =
         touching[name] && (isClosest || distance <= closestDistance * EXTRA_PRESS_RATIO + EXTRA_PRESS_OFFSET)
+      if (touching[name] && !wantsPress) {
+        blocked[name] = 'extra'
+      }
       if (wantsPress) {
         fingerState.held = true // at once: no added latency
         fingerState.releaseFrames = 0
@@ -224,7 +255,13 @@ export function updateAccuratePinch(
       stillHeldRetriggers.push(name)
     }
   }
-  return { fingers: pinched, retriggered: stillHeldRetriggers, distances: distances, flatDistances: flatDistances }
+  return {
+    fingers: pinched,
+    retriggered: stillHeldRetriggers,
+    distances: distances,
+    flatDistances: flatDistances,
+    blocked: blocked,
+  }
 }
 
 // A held finger looks open: clearly further than its closest point in
