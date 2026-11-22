@@ -1,16 +1,13 @@
 // The bottom Layers panel (design.md 4.1): LAYERS title, bar/beat readout,
-// PLAY/STOP, UNDO and ADD LAYER, then the empty-state text, or one track
+// PLAY/STOP and UNDO (ADD LAYER lives in the sidebar), then the empty-state text, or one track
 // row per recorded layer. Newest layer first, as in the design.
 import { useProject } from '../../hooks.ts'
-import { OutlineButton } from '../components/OutlineButton.tsx'
-import { ICONS } from '../icons.ts'
 import type { LayerItem } from './layerItems.ts'
 import { TrackRow } from './TrackRow.tsx'
 import { BeatReadout, TransportButtons } from './TransportControls.tsx'
 
 interface LayersPanelProps {
   items: LayerItem[]
-  onAddLayer: () => void
 }
 
 export function LayersPanel(props: LayersPanelProps) {
@@ -30,9 +27,6 @@ export function LayersPanel(props: LayersPanelProps) {
         <BeatReadout />
         <div className="layers-header-spacer" />
         <TransportButtons />
-        <OutlineButton icon={ICONS.plus} onClick={props.onAddLayer}>
-          Add layer
-        </OutlineButton>
       </div>
 
       {recordedNewestFirst.length === 0 ? (

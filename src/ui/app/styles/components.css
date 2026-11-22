@@ -130,6 +130,20 @@
   cursor: default;
 }
 
+/* ADD LAYER in the sidebar: white like DOWNLOAD. The plus icon is drawn
+   white, so invert it to black on the white fill. */
+.button-add-layer {
+  flex-shrink: 0;
+  background: var(--color-fg);
+  color: var(--color-bg);
+}
+
+.button-add-layer img {
+  width: 16px;
+  height: 16px;
+  filter: invert(1);
+}
+
 .button-filled:active:not(:disabled) {
   opacity: 0.8;
 }

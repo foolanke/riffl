@@ -82,7 +82,7 @@ export function RifflApp() {
             ) : null
           }
         />
-        <LayersPanel items={cards.items} onAddLayer={cards.addLayer} />
+        <LayersPanel items={cards.items} />
       </div>
       <Sidebar cards={cards} cameraOk={cameraOk} />
     </div>

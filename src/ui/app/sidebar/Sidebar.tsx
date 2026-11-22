@@ -1,11 +1,13 @@
-// The sidebar (design.md 3.1, 4.2): brand badge, metronome strip, the layer
+// The sidebar (design.md 3.1, 4.2): brand badge, ADD LAYER, metronome strip, the layer
 // cards (active card first, expanded), then camera check, calibration and
 // the Download button pinned to the bottom.
 import { downloadProjectFile } from '../../../project/saveLoad.ts'
 import { useProject } from '../../hooks.ts'
 import { DownloadButton } from '../components/DownloadButton.tsx'
 import { SectionTitle } from '../components/Glyphs.tsx'
+import { releaseFocus } from '../components/releaseFocus.ts'
 import { useRecorder } from '../hooks/engineState.ts'
+import { ICONS } from '../icons.ts'
 import { LayerCard } from '../layers/LayerCard.tsx'
 import type { LayerCards } from '../layers/useLayerCards.ts'
 import { BrandBadge } from './BrandBadge.tsx'
@@ -26,6 +28,19 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside className="sidebar">
       <BrandBadge audioStarted />
+      {/* ADD LAYER sits at the top of the sidebar as a white, primary button
+          (moved here from the bottom Layers panel at the human's request). */}
+      <button
+        className="button-filled button-add-layer text-item"
+        type="button"
+        onClick={(event) => {
+          cards.addLayer()
+          releaseFocus(event.currentTarget)
+        }}
+      >
+        <img src={ICONS.plus} alt="" />
+        Add layer
+      </button>
       <MetronomeStrip />
 
       {cards.cardOrder.length > 0 ? (
