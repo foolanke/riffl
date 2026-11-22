@@ -9,7 +9,7 @@
 // reading the engine (liveMelody), so React never re-renders per frame.
 import { useEffect, useRef } from 'react'
 import { getHeldNotes, getPlayingInstrument } from '../../../audio/liveMelody.ts'
-import { applyAccidental, getKeyName, moveByWhiteKeys, splitPitch } from '../../../audio/instruments.ts'
+import { getKeyName, getTriad, semitoneToPitch } from '../../../audio/instruments.ts'
 import type { InstrumentName } from '../../../audio/instruments.ts'
 import type { HandSide } from '../../../vision/handTracking.ts'
 import { ICONS } from '../icons.ts'
@@ -111,16 +111,16 @@ export function PianoOverlay() {
 }
 
 // Which keys light for one gesture note (design.md 5.19): the note itself,
-// or the whole triad for the chord pad (moved by the accidental, like the
-// sound). Bass and 808 sound two octaves down, off the overlay, so they
+// or the whole triad for the chord pad (like the sound). Bass and 808 sound two octaves down, off the overlay, so they
 // light the note that was pinched. Key names use sharps ("A#4"), matching
 // the black keys' data-pitch, so a flat lights the same key as its sharp.
 function getLitKeys(instrument: InstrumentName, pitch: string): string[] {
   if (instrument === 'chordPad') {
-    const parts = splitPitch(pitch)
+    // The same triad the chord pad sounds (the key's own chord when the
+    // project key is set, see getTriad).
     const keys: string[] = []
-    for (const steps of [0, 2, 4]) {
-      keys.push(getKeyName(applyAccidental(moveByWhiteKeys(parts.natural, steps), parts.accidental)))
+    for (const semitone of getTriad(pitch)) {
+      keys.push(getKeyName(semitoneToPitch(semitone, false)))
     }
     return keys
   }

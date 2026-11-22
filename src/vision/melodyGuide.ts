@@ -6,8 +6,8 @@
 // everything here uses screen x = 1 - camera x. Hand points stay in camera
 // coordinates like the rest of vision/.
 import type { HandFrame, HandPoint, HandSide } from './handTracking.ts'
-import { applyAccidental } from '../audio/instruments.ts'
-import type { Accidental } from '../audio/instruments.ts'
+import { applyAccidental, parseKey, semitoneToPitch } from '../audio/instruments.ts'
+import type { Accidental, KeyScale } from '../audio/instruments.ts'
 
 // SPEC 3.2: left C4-C5, middle C5-C6, right C6-C7 (screen left to right).
 export const COLUMN_COUNT = 3
@@ -153,11 +153,30 @@ const FINGER_NOTES: Record<HandSide, Record<FingerName, { letter: string; octave
   },
 }
 
+// ---- The project key (designed page only, additive) ----
+// The human asked for the notes to follow the Key setting (SPEC 3.3 keeps
+// white keys only; the test page never calls this, so it still does). The
+// left pinky plays the key's root and the eight fingers walk up its scale,
+// left to right like FINGER_NOTES: G major = left G A B C, right D E F# G.
+// Each row still plays one octave. Its root sits nearest the row's C, so
+// the rows stay about where they were: G major's bottom row is G3-G4,
+// F major's is F4-F5.
+const FINGER_ORDER: Record<HandSide, Record<FingerName, number>> = {
+  left: { pinky: 0, ring: 1, middle: 2, index: 3 },
+  right: { index: 4, middle: 5, ring: 6, pinky: 7 },
+}
+
+let melodyKey: KeyScale | null = null
+
+export function setMelodyKey(key: string | null): void {
+  melodyKey = key === null ? null : parseKey(key)
+}
+
 export interface GuideFinger {
   finger: FingerName
   tip: HandPoint // camera coordinates
   pitch: string // e.g. "G4", or "F#4" / "Bb4" with an accidental
-  natural: string // the white key under the finger, e.g. "F4"
+  natural: string // the note under the finger before any tilt, e.g. "F4" (or "F#4" in a key)
 }
 
 export interface GuideHand {
@@ -292,9 +311,13 @@ function updateColumnInArea(side: HandSide, screenX: number): number {
 function getFingers(points: HandPoint[], side: HandSide, zoneOctave: number, accidental: Accidental): GuideFinger[] {
   const fingers: GuideFinger[] = []
   for (const fingertip of FINGERTIPS) {
-    const note = FINGER_NOTES[side][fingertip.finger]
-    const octave = zoneOctave + note.octaveOffset
-    const natural = note.letter + octave
+    let natural = ''
+    if (melodyKey !== null) {
+      natural = getKeyNote(melodyKey, zoneOctave, FINGER_ORDER[side][fingertip.finger])
+    } else {
+      const note = FINGER_NOTES[side][fingertip.finger]
+      natural = note.letter + (zoneOctave + note.octaveOffset)
+    }
     fingers.push({
       finger: fingertip.finger,
       tip: points[fingertip.landmark],
@@ -303,6 +326,15 @@ function getFingers(points: HandPoint[], side: HandSide, zoneOctave: number, acc
     })
   }
   return fingers
+}
+
+// The scale note `degree` steps above the key's root (0 = root, 7 = the
+// root an octave up), in the row whose C is `rowOctave`.
+function getKeyNote(key: KeyScale, rowOctave: number, degree: number): string {
+  // Roots from G up start in the octave below, so the row stays near its C.
+  const rootOctave = key.root > 6 ? rowOctave - 1 : rowOctave
+  const semitone = rootOctave * 12 + key.root + key.steps[degree % 7] + (degree >= 7 ? 12 : 0)
+  return semitoneToPitch(semitone, key.useFlats)
 }
 
 // Wrist-to-knuckle angle from straight up on the mirrored screen, in

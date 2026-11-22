@@ -6,9 +6,11 @@ import { setHitEchoGuard } from '../../audio/hitDetection.ts'
 import { setAccuratePinch } from '../../audio/liveMelody.ts'
 import { getRecorderState, setConfirmBoxMargin, subscribeToRecorder } from '../../audio/recorder.ts'
 import type { TakeReport } from '../../audio/recorder.ts'
+import { setChordKey } from '../../audio/instruments.ts'
+import { getProject, subscribeToProject } from '../../project/projectStore.ts'
 import { initAutoSave } from '../../project/saveLoad.ts'
 import { setFastFrames } from '../../vision/handTracking.ts'
-import { setAccidentalsEnabled } from '../../vision/melodyGuide.ts'
+import { setAccidentalsEnabled, setMelodyKey } from '../../vision/melodyGuide.ts'
 import { RifflApp } from './RifflApp.tsx'
 import './styles/tokens.css'
 import './styles/app.css'
@@ -40,6 +42,21 @@ setFastFrames(true)
 // Wrist tilt plays accidentals: right = sharp, left = flat, upright =
 // natural (overrides SPEC 3.3 on this page; see vision/melodyGuide.ts).
 setAccidentalsEnabled(true)
+
+// The fingers and the chord pad follow the project's Key setting (the test
+// page keeps SPEC 3.3's white keys). Kept in step on every project change
+// (key picked, project loaded or undone).
+let appliedKey = ''
+function applyProjectKey() {
+  const key = getProject().settings.key
+  if (key !== appliedKey) {
+    appliedKey = key
+    setMelodyKey(key)
+    setChordKey(key)
+  }
+}
+applyProjectKey()
+subscribeToProject(applyProjectKey)
 
 // Drum takes: ignore the ringing right after a tap (it was adding a second
 // note on the next 16th), and check the camera against a box with some room

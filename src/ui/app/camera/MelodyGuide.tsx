@@ -57,7 +57,8 @@ export function MelodyGuide() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(function () {
-    // Octaves stacked in three rows: top C6, middle C5, bottom C4.
+    // Octaves stacked in three rows: top C6, middle C5, bottom C4 (with a
+    // key set, each row starts on the key's root nearest that C).
     setOctaveLayout('rows')
     // Decide a hand's row where the pinch happens (the thumb tip), not
     // at the palm, so the note matches the row the fingers touch in.

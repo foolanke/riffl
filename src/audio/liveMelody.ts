@@ -345,7 +345,7 @@ function findHand(guideHands: GuideHand[], side: HandSide): GuideHand | null {
   return null
 }
 
-// The white key under a finger (before any accidental).
+// The note under a finger before any tilt (a white key, or a key's note).
 function getNatural(hand: GuideHand, finger: FingerName): string {
   for (const guideFinger of hand.fingers) {
     if (guideFinger.finger === finger) {
