@@ -4,8 +4,9 @@
 // One note per hand by default (SPEC 3.4). Several fingers per hand at once
 // is a checkbox in settings ("Multi-finger notes", the human asked for it
 // as an option, saved per browser). Both modes run the exact same tuned
-// detection below; single mode only adds the choosing step at the end
-// (pickSingleFinger), so the tuned numbers stay untouched.
+// detection below, so they feel the same (the human asked for single mode
+// to use multi mode's settings). Single mode only picks which one of the
+// pinched fingers sounds: the one that struck last (pickNewestStrike).
 // liveMelody switches to this one when the designed page calls
 // setAccuratePinch(true).
 // Plain TypeScript, no React (SPEC 0.1 "Engine vs. UI").
@@ -52,13 +53,15 @@ import type { FingerName } from './melodyGuide.ts'
 import type { PinchDistances } from './pinch.ts'
 
 // ---- Tuned values (from /?pinchdebug on the demo laptop, multi-finger
-// mode). Keep as they are: single mode reuses them unchanged. ----
+// mode). Both modes use them unchanged. ----
 
 // Flat distances, in hand sizes in the picture. Readings (3D / flat):
 // touches 0.20/0.11, 0.46/0.11, 0.76/0.11, 0.25/0.25; false notes
 // 0.37/0.46, 0.38/0.38.
-const PRESS_DISTANCE = 0.2 // flat: counts as touching below this
-const AGREE_DISTANCE = 0.3 // ...or when 3D and flat are both below this
+// Tightened from 0.2 / 0.3 (fingers curling near the thumb without touching
+// played notes). Real touches read about 0.11 flat, so 0.15 still catches them.
+const PRESS_DISTANCE = 0.15 // flat: counts as touching below this
+const AGREE_DISTANCE = 0.26 // ...or when 3D and flat are both below this
 const RELEASE_MARGIN = 0.15 // let go this far past the pinch's closest point
 const RELEASE_DISTANCE = 0.4 // always let go past this
 // 3D veto (in real hand sizes): further than this is clearly not touching.
@@ -82,24 +85,6 @@ const HOLD_RATIO = 2.0
 const HOLD_OFFSET = 0.12
 
 const RELEASE_FRAMES = 2
-
-// Single mode only: while one finger holds the note, another touching
-// finger takes over once it is this much closer (flat hand sizes). Fast
-// runs switch on the touch instead of waiting for the old finger's
-// release; the margin stops two equally close fingers flipping back and
-// forth. A touch reads about 0.11, so this sits above tracking jitter.
-const SINGLE_SWITCH_MARGIN = 0.05
-// ...or this fraction of its distance, whichever is easier to reach: at
-// close range (both fingers near the thumb) a fixed 0.05 is almost never
-// met, which kept the ring finger (D4 on the left hand) from taking the
-// note from the middle finger it curls together with.
-const SINGLE_SWITCH_RATIO = 0.7
-// Single mode onset: when a second finger is touching within this of the
-// closest one, wait (at most SETTLE_MAX_FRAMES) for them to separate
-// before choosing. Curling the ring finger drags the middle finger in,
-// and the middle one often reaches the thumb a frame first.
-const SINGLE_SETTLE_MARGIN = 0.05
-const SINGLE_SETTLE_MAX_FRAMES = 1
 
 // Re-strike while held: open at least this far past the closest point,
 // then come back at least this far from the widest point (flat distances).
@@ -151,14 +136,6 @@ const MULTI_FINGER_STORAGE_KEY = 'sounds.multiFingerPinch'
 let multiFinger = loadMultiFinger()
 // Single mode: the finger holding each hand's note.
 const singleFinger: Record<HandSide, FingerName | null> = { left: null, right: null }
-// Single mode: fingers that rested touching next to the playing finger
-// (farther than it), with their distance when that was first seen. They
-// can't play until they open, or move clearly closer than that (the next
-// finger of a run coming in), so a curled neighbour resting still never
-// pops out as a note when the playing finger lets go.
-const needsOpen: Record<HandSide, Map<FingerName, number>> = { left: new Map(), right: new Map() }
-// Frames a new single-mode note has waited for two close fingers to separate.
-const settleFrames: Record<HandSide, number> = { left: 0, right: 0 }
 const modeListeners = new Set<() => void>()
 
 export function getMultiFingerPinch(): boolean {
@@ -277,6 +254,7 @@ export function updateAccuratePinch(
 
   const pinched: FingerName[] = []
   const retriggered: FingerName[] = []
+  const pressed: FingerName[] = [] // started touching this frame
   for (const finger of FINGERS) {
     const name = finger.finger
     const fingerState = state[name]
@@ -315,6 +293,7 @@ export function updateAccuratePinch(
       }
       if (wantsPress) {
         fingerState.held = true // at once: no added latency
+        pressed.push(name)
         fingerState.releaseFrames = 0
         fingerState.closestWhileHeld = distance
         fingerState.widestSinceClosest = distance
@@ -335,11 +314,11 @@ export function updateAccuratePinch(
   let fingers = pinched
   if (!multiFinger) {
     const previous = singleFinger[side]
-    const chosen = pickSingleFinger(side, pinched, flatDistances, touching)
+    const chosen = pickNewestStrike(side, pinched, pressed, stillHeldRetriggers, flatDistances)
     fingers = chosen !== null ? [chosen] : []
-    // Only the same finger, still holding, can re-strike.
-    const keptSameFinger = chosen !== null && chosen === previous
-    stillHeldRetriggers = keptSameFinger && stillHeldRetriggers.includes(chosen) ? [chosen] : []
+    // The same finger striking again restarts its note.
+    const struckAgain = chosen !== null && chosen === previous && stillHeldRetriggers.includes(chosen)
+    stillHeldRetriggers = struckAgain ? [chosen] : []
   }
   return {
     fingers: fingers,
@@ -350,85 +329,34 @@ export function updateAccuratePinch(
   }
 }
 
-// Single mode: which one of this frame's pinched fingers plays.
-// - The finger already playing keeps the note while it is pinched, unless
-//   another pinched finger is clearly closer (a fast run moving on).
-// - Otherwise the closest pinched finger starts a new note.
-// - A finger that sat touching but farther than the playing one is latched
-//   (needsOpen) until it opens. Otherwise, when the playing finger lets go
-//   (or opens a little for a fast repeat), that resting neighbour would
-//   take over as a phantom note.
-// Every other finger is also let go in the detector, so a neighbour
-// "held" in the background can't linger either.
-function pickSingleFinger(
+// Single mode: which one of this frame's pinched fingers sounds. The
+// detection is exactly multi mode's; this only turns its several notes
+// into one, like a mono synth: the newest strike (a fresh press or a
+// re-tap) takes the note, and the closest one wins if two strike on the
+// same frame. While a note plays, a new finger only takes over if it is
+// closer to the thumb than the playing one (the thumb moving on in a run);
+// a neighbour curling in behind it is ignored. When the sounding finger lets go the hand goes quiet, even
+// if another finger is still held, so a neighbour resting against the
+// thumb never pops out as a note on its own.
+function pickNewestStrike(
   side: HandSide,
   pinched: FingerName[],
+  pressed: FingerName[],
+  retriggered: FingerName[],
   flatDistances: PinchDistances,
-  touching: Record<FingerName, boolean>,
 ): FingerName | null {
-  const latched = needsOpen[side]
-  for (const finger of FINGERS) {
-    const name = finger.finger
-    const latchedAt = latched.get(name)
-    if (latchedAt === undefined) {
-      continue
-    }
-    // Opened, or pressed clearly closer than where it rested: a real touch.
-    if (!touching[name] || flatDistances[name] < latchedAt - SINGLE_SWITCH_MARGIN) {
-      latched.delete(name)
-    }
-  }
-
   const current = singleFinger[side]
+  const currentHeld = current !== null && pinched.includes(current)
   let chosen: FingerName | null = null
-  if (current !== null && pinched.includes(current)) {
-    chosen = current
-    for (const name of pinched) {
-      const switchAt = Math.max(
-        flatDistances[current] - SINGLE_SWITCH_MARGIN,
-        flatDistances[current] * SINGLE_SWITCH_RATIO,
-      )
-      const clearlyCloser = flatDistances[name] < switchAt
-      if (name !== current && !latched.has(name) && clearlyCloser && flatDistances[name] < flatDistances[chosen]) {
-        chosen = name
-      }
-    }
-  } else {
-    for (const name of pinched) {
-      if (!latched.has(name) && (chosen === null || flatDistances[name] < flatDistances[chosen])) {
-        chosen = name
-      }
-    }
-    // A new note with another finger touching about as close: too early to
-    // tell which one is meant, so wait a frame (detector state is kept, so
-    // nothing is lost) and take whichever is closest then.
-    if (chosen !== null && settleFrames[side] < SINGLE_SETTLE_MAX_FRAMES) {
-      for (const finger of FINGERS) {
-        const name = finger.finger
-        const close = flatDistances[name] < flatDistances[chosen] + SINGLE_SETTLE_MARGIN
-        if (name !== chosen && touching[name] && !latched.has(name) && close) {
-          settleFrames[side]++
-          singleFinger[side] = null
-          return null
-        }
-      }
+  for (const name of pinched) {
+    const struck = pressed.includes(name) || retriggered.includes(name)
+    const takesOver = !currentHeld || name === current || flatDistances[name] < flatDistances[current]
+    if (struck && takesOver && (chosen === null || flatDistances[name] < flatDistances[chosen])) {
+      chosen = name
     }
   }
-  settleFrames[side] = 0
-
-  const state = hands[side]
-  for (const finger of FINGERS) {
-    const name = finger.finger
-    if (name === chosen) {
-      continue
-    }
-    state[name] = newFingerState()
-    // Resting against the thumb next to the playing finger: latch it.
-    // A closer finger (the thumb sliding along a run) stays free to take over.
-    const resting = chosen !== null && touching[name] && flatDistances[name] >= flatDistances[chosen]
-    if (resting && !latched.has(name)) {
-      latched.set(name, flatDistances[name])
-    }
+  if (chosen === null && currentHeld) {
+    chosen = current
   }
   singleFinger[side] = chosen
   return chosen
@@ -444,8 +372,6 @@ function looksReleased(state: FingerState, distance: number): boolean {
 export function resetAccuratePinch(side: HandSide): void {
   hands[side] = newHandState()
   singleFinger[side] = null
-  needsOpen[side].clear()
-  settleFrames[side] = 0
 }
 
 // Image points have y as a fraction of the height; scale it to width
