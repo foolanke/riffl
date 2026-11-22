@@ -43,7 +43,7 @@ import { getCameraLagSeconds } from './cameraLagCheck.ts'
 import { playForTake } from './clock.ts'
 import type { TakeTiming } from './clock.ts'
 import type { DrumName } from './drums.ts'
-import { decibelsToAmplitude, findHitsInSamples } from './hitDetection.ts'
+import { amplitudeToDecibels, decibelsToAmplitude, findHitsInSamples } from './hitDetection.ts'
 import type { InstrumentName } from './instruments.ts'
 import { getLagSeconds } from './lagCheck.ts'
 import { getSelectedInstrument, setLiveMelodyTakeMode, startNoteLog, stopNoteLog } from './liveMelody.ts'
@@ -73,6 +73,26 @@ const HIT_PEAK_WINDOW_SECONDS = 0.01
 // and small timing differences between the camera and the mic.
 const HAND_WINDOW_MS = 100
 
+// Designed page only (opt-in): camera confirmation checks a box grown by
+// this share of its size on each side. Click-added and suggested boxes hug
+// the object, and a finger tapping from above or in front sits just
+// outside it, so real hits were thrown away. 0 = the box as drawn (test page).
+let confirmBoxMargin = 0
+
+export function setConfirmBoxMargin(fraction: number): void {
+  confirmBoxMargin = Math.max(0, fraction)
+}
+
+function growBox(box: Box, fraction: number): Box {
+  const padX = box.width * fraction
+  const padY = box.height * fraction
+  const left = Math.max(0, box.x - padX)
+  const top = Math.max(0, box.y - padY)
+  const right = Math.min(1, box.x + box.width + padX)
+  const bottom = Math.min(1, box.y + box.height + padY)
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
 export type RecordStatus = 'idle' | 'countIn' | 'recording' | 'processing'
 
 export interface HitReport {
@@ -82,6 +102,7 @@ export interface HitReport {
   positionLabel: string // bar.beat.sixteenth, e.g. "1.2.1"
   ignoredAsSpeaker: boolean // true = probably the speakers, not a tap
   ignoredNoHand: boolean // true = camera saw no hand at the object
+  peakDb: number // loudness of the hit, to compare with the threshold
 }
 
 export interface TakeReport {
@@ -91,6 +112,9 @@ export interface TakeReport {
   recordedSeconds: number
   hits: HitReport[]
   snappedSteps: number[]
+  lagMs: number // mic lag subtracted from every hit (0 = never calibrated)
+  thresholdDb: number // sensitivity threshold used
+  cameraChecked: boolean // false = mic only for this take
 }
 
 // One recorded note before snapping, for the take report.
@@ -262,7 +286,7 @@ async function recordDrumTake(retakeLayer: DrumLayer | null): Promise<void> {
     } else if (!isHandTrackingRunning()) {
       confirmSkippedReason = 'camera is off'
     } else {
-      confirmBox = object.box
+      confirmBox = growBox(object.box, confirmBoxMargin)
     }
   }
 
@@ -574,6 +598,7 @@ function processTake(
       positionLabel: getPositionLabel(wrappedStep, timing.stepsPerBar),
       ignoredAsSpeaker: ignoredAsSpeaker,
       ignoredNoHand: ignoredNoHand,
+      peakDb: amplitudeToDecibels(hitPeak),
     })
   }
 
@@ -587,6 +612,9 @@ function processTake(
     recordedSeconds: lastTakeAudio.length / sampleRate,
     hits: hitReports,
     snappedSteps: snappedSteps,
+    lagMs: lagSeconds * 1000,
+    thresholdDb: getHitThresholdDb(),
+    cameraChecked: confirmBox !== null,
   }
 }
 

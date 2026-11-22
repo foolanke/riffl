@@ -9,6 +9,13 @@
 //
 // Pure logic, no Web Audio, so the same check can later run on a recorded
 // take (step 13) as well as on the live mic (step 11).
+//
+// Echo guard (opt-in, designed page): an object keeps ringing after a tap,
+// and the slow background can't keep up, so the ringing ~80-100ms later
+// could count as a second hit (an extra note on the next 16th). With the
+// guard on, a new hit must also beat a fast-fading copy of the last hit's
+// loudness. A real second tap is about as loud as the first and passes; a
+// ring that has already faded to a fraction of it doesn't.
 
 // A hit must be at least this many times louder than the background (~10 dB).
 const SUDDEN_RISE_RATIO = 3
@@ -22,13 +29,28 @@ const MIN_SECONDS_BETWEEN_HITS = 0.08
 const LEAST_SENSITIVE_DB = -10
 const MOST_SENSITIVE_DB = -50
 
+// After a hit, how long the guard keeps raising the hit's peak (the first
+// block of a tap is often not its loudest), how fast it fades, and how far
+// above the faded level a new hit must be.
+const ECHO_PEAK_SECONDS = 0.015
+const ECHO_FADE_SECONDS = 0.05
+const ECHO_RATIO = 2
+
+let echoGuard = false
+
+// Designed page only; the test page keeps the original check.
+export function setHitEchoGuard(on: boolean): void {
+  echoGuard = on
+}
+
 export interface HitDetector {
   backgroundPeak: number
   lastHitTime: number
+  lastHitPeak: number
 }
 
 export function createHitDetector(): HitDetector {
-  return { backgroundPeak: 0, lastHitTime: -Infinity }
+  return { backgroundPeak: 0, lastHitTime: -Infinity, lastHitPeak: 0 }
 }
 
 export function sensitivityToThresholdDb(sensitivity: number): number {
@@ -59,10 +81,20 @@ export function checkBlockForHit(
   const isLoudEnough = blockPeak >= thresholdAmplitude
   const isSudden = blockPeak >= detector.backgroundPeak * SUDDEN_RISE_RATIO
   const isAfterGap = blockTime - detector.lastHitTime >= MIN_SECONDS_BETWEEN_HITS
-  const isHit = isLoudEnough && isSudden && isAfterGap
+  const sinceHit = blockTime - detector.lastHitTime
+  let beatsEcho = true
+  if (echoGuard) {
+    if (sinceHit < ECHO_PEAK_SECONDS) {
+      detector.lastHitPeak = Math.max(detector.lastHitPeak, blockPeak)
+    }
+    const fadedHit = detector.lastHitPeak * Math.exp(-sinceHit / ECHO_FADE_SECONDS)
+    beatsEcho = blockPeak >= fadedHit * ECHO_RATIO
+  }
+  const isHit = isLoudEnough && isSudden && isAfterGap && beatsEcho
 
   if (isHit) {
     detector.lastHitTime = blockTime
+    detector.lastHitPeak = blockPeak
   }
 
   // Update the background after the check, so a hit is compared with what came before it.
