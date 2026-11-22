@@ -105,6 +105,29 @@
   background: var(--color-fg-muted);
 }
 
+/* Clickable dots on recorded drum layers: a bare button that looks exactly
+   like the plain step. States follow design.md section 8 defaults. */
+.step.is-toggle {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.step.is-toggle:hover:not(:disabled)::after {
+  border-color: var(--color-fg-muted);
+}
+
+.step.is-toggle:active:not(:disabled)::after {
+  opacity: 0.8;
+}
+
+/* While a take runs the dots keep their look (the row would flicker on
+   every take otherwise); they just stop reacting. */
+.step.is-toggle:disabled {
+  cursor: default;
+}
+
 /* ---- 5.14 Score track (melody layers), one slot per 16th ---- */
 
 .score-staff {

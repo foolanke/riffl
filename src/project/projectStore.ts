@@ -305,6 +305,36 @@ export function setLayerDrum(layerId: string, drum: DrumName): void {
   setProject({ ...currentProject, layers: updated })
 }
 
+// Turn one 16th step of a recorded drum layer on or off, so the user can
+// fix a rhythm by hand (designed page's track row). The layer player reads
+// hits on every step, so playback follows from the next pass of that step.
+// Not undoable (undo is for takes, SPEC 1.6), like the other layer edits.
+export function toggleDrumLayerStep(layerId: string, step: number): void {
+  if (!Number.isInteger(step) || step < 0) {
+    return
+  }
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId && layer.type === 'drum') {
+      const newHits: number[] = []
+      for (const hit of layer.hits) {
+        if (hit !== step) {
+          newHits.push(hit)
+        }
+      }
+      // Step was off: add it. Keep hits in order, as snapped takes are.
+      if (newHits.length === layer.hits.length) {
+        newHits.push(step)
+        newHits.sort((a, b) => a - b)
+      }
+      updated.push({ ...layer, hits: newHits })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
 // Change which object a recorded drum layer's retakes use for camera
 // confirmation (SPEC 1.4); null = mic only. Its hits stay the same.
 // Used by the designed page's object markers. Not undoable (undo is for takes, SPEC 1.6).
