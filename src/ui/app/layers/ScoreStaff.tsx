@@ -4,6 +4,9 @@
 //   with a barline between bars;
 // - notes outside E4-G5 (the designed staff) show only their name;
 // - a held note shows at its start; two notes starting together show the lower.
+// - sharps and flats (wrist tilt) sit on their natural's line with a
+//   ♯ or ♭ beside the head, like printed music.
+import { formatPitch, getKeyName, splitPitch } from '../../../audio/instruments.ts'
 import type { MelodyLayer, ProjectSettings } from '../../../project/projectStore.ts'
 import { getStepsPerBar } from '../../../project/projectStore.ts'
 import { ICONS } from '../icons.ts'
@@ -38,7 +41,7 @@ export function ScoreStaff(props: ScoreStaffProps) {
       continue
     }
     const current = noteAtStep[note.step]
-    if (current === null || getWhiteKeyIndex(note.pitch) < getWhiteKeyIndex(current)) {
+    if (current === null || getSemitone(note.pitch) < getSemitone(current)) {
       noteAtStep[note.step] = note.pitch
     }
   }
@@ -77,6 +80,7 @@ export function ScoreStaff(props: ScoreStaffProps) {
 // Head, stem and name for one note (design.md 5.14). Notes off the designed
 // staff (below E4 or above G5) get only the name.
 function NoteGlyph(props: { pitch: string }) {
+  const accidental = splitPitch(props.pitch).accidental
   const index = getWhiteKeyIndex(props.pitch)
   const onStaff = index >= E4_INDEX && index <= G5_INDEX
   const centerY = BOTTOM_LINE_Y - PX_PER_STEP * (index - E4_INDEX)
@@ -86,19 +90,35 @@ function NoteGlyph(props: { pitch: string }) {
       {onStaff ? (
         <>
           <img className="score-head" src={ICONS.noteHead} alt="" style={{ top: centerY - 4 }} />
+          {accidental !== 0 ? (
+            <span className="score-accidental" style={{ top: centerY - 7 }}>
+              {accidental === 1 ? '♯' : '♭'}
+            </span>
+          ) : null}
           <div
             className={'score-stem' + (stemUp ? ' is-up' : ' is-down')}
             style={{ top: stemUp ? centerY - STEM_HEIGHT : centerY }}
           />
         </>
       ) : null}
-      <span className="score-name text-label color-muted">{props.pitch}</span>
+      <span className="score-name text-label color-muted">{formatPitch(props.pitch)}</span>
     </>
   )
 }
 
+// Staff position: the white key of the note's natural (F#4 sits on F4).
 function getWhiteKeyIndex(pitch: string): number {
-  return Number(pitch.slice(1)) * 7 + WHITE_LETTERS.indexOf(pitch[0])
+  const natural = splitPitch(pitch).natural
+  return Number(natural.slice(1)) * 7 + WHITE_LETTERS.indexOf(natural[0])
+}
+
+// How high a note really sounds, for picking the lower of two notes.
+function getSemitone(pitch: string): number {
+  const key = getKeyName(pitch)
+  const isBlack = key[1] === '#'
+  const octave = Number(key.slice(isBlack ? 2 : 1))
+  const SEMITONES: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
+  return octave * 12 + SEMITONES[key[0]] + (isBlack ? 1 : 0)
 }
 
 // Count for a 16th step within its bar: "1 e & a 2 e & a ..." in 4/4 and 3/4.

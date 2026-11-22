@@ -14,6 +14,7 @@ import {
   getLastPinchBlocks,
   getLastPinchDistances,
 } from '../../../audio/liveMelody.ts'
+import { formatPitch } from '../../../audio/instruments.ts'
 import { getLatestHandFrame, getTrackingTimings } from '../../../vision/handTracking.ts'
 import type { HandPoint, HandSide } from '../../../vision/handTracking.ts'
 import {
@@ -128,9 +129,21 @@ function drawGuide(canvas: HTMLCanvasElement) {
   context.letterSpacing = '1.44px'
   for (const hand of hands) {
     const heldNotes = getHeldNotes(hand.side)
-    // Which hand the app thinks this is, so a mix-up is easy to spot.
+    // Which hand the app thinks this is, so a mix-up is easy to spot, plus
+    // the accidental its tilt is playing (right = sharp, left = flat).
     const palm = imageToPanel(hand.palm, fit)
-    drawPill(context, hand.side === 'left' ? 'LEFT' : 'RIGHT', palm.x, palm.y, COLOR_OVERLAY, COLOR_FG_MUTED, 4)
+    let handLabel = hand.side === 'left' ? 'LEFT' : 'RIGHT'
+    if (hand.accidental === 1) {
+      handLabel += ' ♯'
+    } else if (hand.accidental === -1) {
+      handLabel += ' ♭'
+    }
+    if (SHOW_PINCH_DEBUG) {
+      handLabel += ' ' + hand.tiltDegrees.toFixed(0) + '°'
+    }
+    // Inverted while sharp or flat, so the change is easy to see.
+    const tilted = hand.accidental !== 0
+    drawPill(context, handLabel, palm.x, palm.y, tilted ? COLOR_FG : COLOR_OVERLAY, tilted ? COLOR_BG : COLOR_FG_MUTED, 4)
 
     for (const finger of hand.fingers) {
       // Just above the fingertip, so the label doesn't cover the finger.
@@ -144,7 +157,7 @@ function drawGuide(canvas: HTMLCanvasElement) {
       }
       drawPill(
         context,
-        finger.pitch,
+        formatPitch(finger.pitch),
         tip.x,
         tip.y - 20,
         isPinched ? COLOR_FG : COLOR_OVERLAY,
@@ -173,7 +186,7 @@ function drawGuide(canvas: HTMLCanvasElement) {
   const playing: string[] = []
   for (const side of SIDES) {
     for (const note of getHeldNotes(side)) {
-      playing.push(note.pitch)
+      playing.push(formatPitch(note.pitch))
     }
   }
   if (playing.length > 0) {

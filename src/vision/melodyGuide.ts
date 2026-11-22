@@ -6,6 +6,8 @@
 // everything here uses screen x = 1 - camera x. Hand points stay in camera
 // coordinates like the rest of vision/.
 import type { HandFrame, HandPoint, HandSide } from './handTracking.ts'
+import { applyAccidental } from '../audio/instruments.ts'
+import type { Accidental } from '../audio/instruments.ts'
 
 // SPEC 3.2: left C4-C5, middle C5-C6, right C6-C7 (screen left to right).
 export const COLUMN_COUNT = 3
@@ -53,6 +55,31 @@ export function getColumnBorder(column: number): number {
   return columnAreaLeft + (column / COLUMN_COUNT) * (columnAreaRight - columnAreaLeft)
 }
 
+// ---- Accidentals from wrist tilt (designed page only, additive) ----
+// The human overrode SPEC 3.3 (white keys only) for the designed page: a
+// hand tilted right plays sharps, tilted left plays flats, upright plays
+// naturals. Off by default, so the test page keeps white keys only.
+//
+// Tilt = angle of the line from the wrist to the base of the middle finger,
+// away from straight up, on the MIRRORED screen (what the user sees):
+// positive = the top of the hand leans right. This line barely moves when
+// fingers pinch, so pinching doesn't change the accidental.
+// Hysteresis like the column dead zone: a hand has to tilt past ENTER to
+// switch to sharp/flat, and come back inside EXIT to be natural again.
+const TILT_ENTER_DEGREES = 25
+const TILT_EXIT_DEGREES = 15
+const WRIST = 0
+const MIDDLE_FINGER_BASE = 9
+
+let accidentalsOn = false
+const currentAccidental: Record<HandSide, Accidental> = { left: 0, right: 0 }
+
+export function setAccidentalsEnabled(on: boolean): void {
+  accidentalsOn = on
+  currentAccidental.left = 0
+  currentAccidental.right = 0
+}
+
 export type FingerName = 'index' | 'middle' | 'ring' | 'pinky'
 
 // MediaPipe landmark numbers for each fingertip.
@@ -84,7 +111,8 @@ const FINGER_NOTES: Record<HandSide, Record<FingerName, { letter: string; octave
 export interface GuideFinger {
   finger: FingerName
   tip: HandPoint // camera coordinates
-  pitch: string // e.g. "G4"
+  pitch: string // e.g. "G4", or "F#4" / "Bb4" with an accidental
+  natural: string // the white key under the finger, e.g. "F4"
 }
 
 export interface GuideHand {
@@ -93,6 +121,8 @@ export interface GuideHand {
   palm: HandPoint // camera coordinates
   fingers: GuideFinger[]
   points: HandPoint[] // all 21 tracked points, for pinch detection
+  tiltDegrees: number // + leans right on screen, - leans left
+  accidental: Accidental // from the tilt; always 0 unless accidentals are on
   worldPoints?: HandPoint[] // the same points in meters (see HandFrame.world)
 }
 
@@ -121,6 +151,8 @@ export function getGuideHands(frame: HandFrame): GuideHand[] {
     }
     seen[side] = true
 
+    const tiltDegrees = getTiltDegrees(points, frame.aspect)
+    const accidental = accidentalsOn ? updateAccidental(side, tiltDegrees) : 0
     const palm = getPalmCenter(points)
     const columnX = columnPoint === 'thumb' ? points[THUMB_TIP].x : palm.x
     const column = updateColumn(side, 1 - columnX)
@@ -128,8 +160,10 @@ export function getGuideHands(frame: HandFrame): GuideHand[] {
       side: side,
       column: column,
       palm: palm,
-      fingers: getFingers(points, side, column),
+      fingers: getFingers(points, side, column, accidental),
       points: points,
+      tiltDegrees: tiltDegrees,
+      accidental: accidental,
       worldPoints: frame.world ? frame.world[i] : undefined,
     })
   }
@@ -137,9 +171,11 @@ export function getGuideHands(frame: HandFrame): GuideHand[] {
   // A hand that left the picture starts fresh when it comes back.
   if (!seen.left) {
     currentColumn.left = null
+    currentAccidental.left = 0
   }
   if (!seen.right) {
     currentColumn.right = null
+    currentAccidental.right = 0
   }
 
   lastGuideHands = guideHands
@@ -192,12 +228,47 @@ function updateColumnInArea(side: HandSide, screenX: number): number {
   return column
 }
 
-function getFingers(points: HandPoint[], side: HandSide, column: number): GuideFinger[] {
+function getFingers(points: HandPoint[], side: HandSide, column: number, accidental: Accidental): GuideFinger[] {
   const fingers: GuideFinger[] = []
   for (const fingertip of FINGERTIPS) {
     const note = FINGER_NOTES[side][fingertip.finger]
     const octave = COLUMN_START_OCTAVES[column] + note.octaveOffset
-    fingers.push({ finger: fingertip.finger, tip: points[fingertip.landmark], pitch: note.letter + octave })
+    const natural = note.letter + octave
+    fingers.push({
+      finger: fingertip.finger,
+      tip: points[fingertip.landmark],
+      pitch: applyAccidental(natural, accidental),
+      natural: natural,
+    })
   }
   return fingers
+}
+
+// Wrist-to-knuckle angle from straight up on the mirrored screen, in
+// degrees. Image y grows downward and x is mirrored, hence the minus signs;
+// y is scaled to width units so the angle is true on screen.
+function getTiltDegrees(points: HandPoint[], aspect: number): number {
+  const wrist = points[WRIST]
+  const knuckle = points[MIDDLE_FINGER_BASE]
+  const right = -(knuckle.x - wrist.x)
+  const up = -(knuckle.y - wrist.y) / aspect
+  return (Math.atan2(right, up) * 180) / Math.PI
+}
+
+function updateAccidental(side: HandSide, tiltDegrees: number): Accidental {
+  const current = currentAccidental[side]
+  let next: Accidental = current
+  if (current === 0) {
+    if (tiltDegrees > TILT_ENTER_DEGREES) {
+      next = 1
+    } else if (tiltDegrees < -TILT_ENTER_DEGREES) {
+      next = -1
+    }
+  } else if (current === 1 && tiltDegrees < TILT_EXIT_DEGREES) {
+    next = tiltDegrees < -TILT_ENTER_DEGREES ? -1 : 0
+  } else if (current === -1 && tiltDegrees > -TILT_EXIT_DEGREES) {
+    next = tiltDegrees > TILT_ENTER_DEGREES ? 1 : 0
+  }
+  currentAccidental[side] = next
+  return next
 }

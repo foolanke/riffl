@@ -6,7 +6,7 @@
 // project, so a loaded file sounds the same on any laptop.
 import { DRUMS } from '../audio/drums.ts'
 import type { DrumName } from '../audio/drums.ts'
-import { INSTRUMENTS, isWhiteKeyPitch } from '../audio/instruments.ts'
+import { INSTRUMENTS, isPitch } from '../audio/instruments.ts'
 import type { InstrumentName } from '../audio/instruments.ts'
 import {
   COUNT_IN_OPTIONS,
@@ -185,7 +185,7 @@ function parseMelodyLayer(item: Record<string, unknown>): MelodyLayer | null {
     }
     // Minimum note length is one 16th (SPEC 3.7).
     const lengthOk = typeof note.length === 'number' && Number.isInteger(note.length) && note.length >= 1
-    if (isStep(note.step) && lengthOk && isWhiteKeyPitch(note.pitch)) {
+    if (isStep(note.step) && lengthOk && isPitch(note.pitch)) {
       notes.push({ step: note.step, length: note.length as number, pitch: note.pitch })
     }
   }

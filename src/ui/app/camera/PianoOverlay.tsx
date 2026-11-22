@@ -7,7 +7,7 @@
 // reading the engine (liveMelody), so React never re-renders per frame.
 import { useEffect, useRef } from 'react'
 import { getHeldNotes, getPlayingInstrument } from '../../../audio/liveMelody.ts'
-import { moveByWhiteKeys } from '../../../audio/instruments.ts'
+import { applyAccidental, getKeyName, moveByWhiteKeys, splitPitch } from '../../../audio/instruments.ts'
 import type { InstrumentName } from '../../../audio/instruments.ts'
 import type { HandSide } from '../../../vision/handTracking.ts'
 import { ICONS } from '../icons.ts'
@@ -25,6 +25,8 @@ const OVERLAY_PADDING = 8
 const OCTAVE_GAP = 8
 // Ripple centre: 95px down from the overlay's top (low over the keys, as in the mock).
 const RIPPLE_CENTER_Y = 95
+// Black keys are shorter (58% of the keys' 116px), so their ripple sits higher.
+const BLACK_RIPPLE_CENTER_Y = 42
 
 const SIDES: HandSide[] = ['left', 'right']
 
@@ -57,7 +59,9 @@ export function PianoOverlay() {
           lastPitches[side] = pitches
         }
 
-        const keys = overlay.querySelectorAll<HTMLElement>('.piano-white-key')
+        // Sharps and flats (wrist tilt) light the black keys, which the
+        // design kept decorative when only white keys could play.
+        const keys = overlay.querySelectorAll<HTMLElement>('.piano-white-key, .piano-black-key')
         for (const key of keys) {
           key.classList.toggle('is-active', lit.has(key.dataset.pitch || ''))
         }
@@ -87,6 +91,7 @@ export function PianoOverlay() {
               <div
                 key={border}
                 className="piano-black-key"
+                data-pitch={WHITE_LETTERS[border - 1] + '#' + octave}
                 style={{
                   left: border * WHITE_KEY_PERCENT - BLACK_KEY_PERCENT / 2 + '%',
                   width: BLACK_KEY_PERCENT + '%',
@@ -103,20 +108,31 @@ export function PianoOverlay() {
   )
 }
 
-// Which white keys light for one gesture note (design.md 5.19): the note
-// itself, or the whole triad for the chord pad. Bass and 808 sound two
-// octaves down, off the overlay, so they light the note that was pinched.
+// Which keys light for one gesture note (design.md 5.19): the note itself,
+// or the whole triad for the chord pad (moved by the accidental, like the
+// sound). Bass and 808 sound two octaves down, off the overlay, so they
+// light the note that was pinched. Key names use sharps ("A#4"), matching
+// the black keys' data-pitch, so a flat lights the same key as its sharp.
 function getLitKeys(instrument: InstrumentName, pitch: string): string[] {
   if (instrument === 'chordPad') {
-    return [pitch, moveByWhiteKeys(pitch, 2), moveByWhiteKeys(pitch, 4)]
+    const parts = splitPitch(pitch)
+    const keys: string[] = []
+    for (const steps of [0, 2, 4]) {
+      keys.push(getKeyName(applyAccidental(moveByWhiteKeys(parts.natural, steps), parts.accidental)))
+    }
+    return keys
   }
-  return [pitch]
+  return [getKeyName(pitch)]
 }
 
 // A ripple centred on the key of `pitch`. Notes off the overlay (C7) get none.
 function addRipple(overlay: HTMLDivElement, layer: HTMLDivElement | null, pitch: string) {
-  const octaveIndex = OCTAVES.indexOf(Number(pitch.slice(1)))
-  const keyIndex = WHITE_LETTERS.indexOf(pitch[0])
+  // e.g. "A#4": letter A, sharp, octave 4. Black keys centre on the border
+  // to the right of their letter.
+  const keyName = getKeyName(pitch)
+  const isBlack = keyName[1] === '#'
+  const octaveIndex = OCTAVES.indexOf(Number(keyName.slice(isBlack ? 2 : 1)))
+  const keyIndex = WHITE_LETTERS.indexOf(keyName[0])
   if (layer === null || octaveIndex < 0 || keyIndex < 0) {
     return
   }
@@ -124,14 +140,15 @@ function addRipple(overlay: HTMLDivElement, layer: HTMLDivElement | null, pitch:
   const innerWidth = overlay.clientWidth - 2 * OVERLAY_PADDING
   const octaveWidth = (innerWidth - OCTAVE_GAP * (OCTAVES.length - 1)) / OCTAVES.length
   const keyWidth = octaveWidth / 7
-  const centerX = OVERLAY_BORDER + OVERLAY_PADDING + octaveIndex * (octaveWidth + OCTAVE_GAP) + (keyIndex + 0.5) * keyWidth
+  const keyCenter = isBlack ? keyIndex + 1 : keyIndex + 0.5
+  const centerX = OVERLAY_BORDER + OVERLAY_PADDING + octaveIndex * (octaveWidth + OCTAVE_GAP) + keyCenter * keyWidth
 
   const ripple = document.createElement('img')
   ripple.src = ICONS.tapRipple
   ripple.alt = ''
   ripple.className = 'tap-ripple'
   ripple.style.left = centerX + 'px'
-  ripple.style.top = RIPPLE_CENTER_Y + 'px'
+  ripple.style.top = (isBlack ? BLACK_RIPPLE_CENTER_Y : RIPPLE_CENTER_Y) + 'px'
   ripple.addEventListener('animationend', function () {
     ripple.remove()
   })

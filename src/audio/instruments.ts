@@ -60,7 +60,24 @@ export function moveByWhiteKeys(pitch: string, whiteKeySteps: number): string {
 //   Still only the triad's three notes (SPEC 3.5), just spread out.
 // - Low flute: the note one octave below (alto-flute range).
 // - Everything else: the note itself.
+//
+// Accidentals (designed page, wrist tilt): a sharp or flat pitch such as
+// "F#4" is worked out on its natural ("F4") and then every note played is
+// moved by the same semitone, so the chord pad's F chord becomes F# major.
 export function getNotesToPlay(instrument: InstrumentName, pitch: string): string[] {
+  const parts = splitPitch(pitch)
+  const naturalNotes = getNaturalNotesToPlay(instrument, parts.natural)
+  if (parts.accidental === 0) {
+    return naturalNotes
+  }
+  const notes: string[] = []
+  for (const note of naturalNotes) {
+    notes.push(applyAccidental(note, parts.accidental))
+  }
+  return notes
+}
+
+function getNaturalNotesToPlay(instrument: InstrumentName, pitch: string): string[] {
   if (instrument === 'bass' || instrument === 'bass808') {
     return [moveByWhiteKeys(pitch, -14)]
   }
@@ -71,4 +88,65 @@ export function getNotesToPlay(instrument: InstrumentName, pitch: string): strin
     return [moveByWhiteKeys(pitch, -7)]
   }
   return [pitch]
+}
+
+// ---- Accidentals (designed page only; the human overrode SPEC 3.3's
+// white keys only there) ----
+// -1 = flat, 0 = natural, +1 = sharp.
+export type Accidental = -1 | 0 | 1
+
+// Any pitch name the app stores: a letter, an optional # or b, an octave.
+// e.g. "G4", "F#4", "Bb4". Used to check loaded files.
+export function isPitch(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-G][#b]?[0-9]$/.test(value)
+}
+
+// "F#4" -> natural "F4", accidental +1. "G4" -> "G4", 0.
+export function splitPitch(pitch: string): { natural: string; accidental: Accidental } {
+  if (pitch.length === 3 && pitch[1] === '#') {
+    return { natural: pitch[0] + pitch[2], accidental: 1 }
+  }
+  if (pitch.length === 3 && pitch[1] === 'b') {
+    return { natural: pitch[0] + pitch[2], accidental: -1 }
+  }
+  return { natural: pitch, accidental: 0 }
+}
+
+// A natural moved a semitone up (sharp) or down (flat), named like a real
+// key: sharps as "F#4", flats as "Bb4". E and B have no sharp key and C and
+// F no flat key, so those land on the next white key (E# -> F, Cb -> B).
+export function applyAccidental(natural: string, accidental: Accidental): string {
+  if (accidental === 0) {
+    return natural
+  }
+  const letter = natural[0]
+  if (accidental === 1 && (letter === 'E' || letter === 'B')) {
+    return moveByWhiteKeys(natural, 1)
+  }
+  if (accidental === -1 && (letter === 'C' || letter === 'F')) {
+    return moveByWhiteKeys(natural, -1)
+  }
+  return letter + (accidental === 1 ? '#' : 'b') + natural.slice(1)
+}
+
+const SEMITONES_FROM_C: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }
+const SHARP_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+// The piano key a pitch sounds on, always named with sharps ("Bb4" -> "A#4"),
+// so a flat and its sharp light the same key.
+export function getKeyName(pitch: string): string {
+  const parts = splitPitch(pitch)
+  const octave = Number(parts.natural.slice(1))
+  const semitone = octave * 12 + SEMITONES_FROM_C[parts.natural[0]] + parts.accidental
+  return SHARP_NAMES[((semitone % 12) + 12) % 12] + Math.floor(semitone / 12)
+}
+
+// For on-screen text: "F#4" -> "F♯4", "Bb4" -> "B♭4" (a lowercase b would
+// read as B once the UI uppercases it).
+export function formatPitch(pitch: string): string {
+  const parts = splitPitch(pitch)
+  if (parts.accidental === 0) {
+    return pitch
+  }
+  return parts.natural[0] + (parts.accidental === 1 ? '♯' : '♭') + parts.natural.slice(1)
 }

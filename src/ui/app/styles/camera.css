@@ -105,6 +105,12 @@
   top: 95px;
 }
 
+/* A sounding sharp or flat (wrist tilt) lights its black key. Solid light
+   grey: the translucent white-key highlight would look darker on a black key. */
+.piano-black-key.is-active {
+  background: var(--color-fg-muted);
+}
+
 /* Ripples may spill past the overlay, so their layer isn't clipped. */
 .piano-ripple-layer {
   pointer-events: none;

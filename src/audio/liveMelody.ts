@@ -20,8 +20,8 @@ import { getPinchDistances, resetPinch, updatePinch } from '../vision/pinch.ts'
 import type { PinchDistances } from '../vision/pinch.ts'
 import { resetAccuratePinch, updateAccuratePinch } from '../vision/pinchAccurate.ts'
 import type { BlockReason } from '../vision/pinchAccurate.ts'
-import { getNotesToPlay } from './instruments.ts'
-import type { InstrumentName } from './instruments.ts'
+import { applyAccidental, getNotesToPlay } from './instruments.ts'
+import type { Accidental, InstrumentName } from './instruments.ts'
 import { getFingerVoice, getMelodyVoice } from './melodySynths.ts'
 
 // Tracking sometimes loses a hand for a frame or two. A held note only
@@ -38,6 +38,11 @@ export interface HeldNote {
   finger: FingerName
   pitch: string
   instrument: InstrumentName
+  // Designed page (accidentals from wrist tilt): the white key the finger
+  // started on and the accidental it is playing. When the hand's tilt
+  // changes, the held note moves to the new accidental on that same key.
+  natural?: string
+  accidental?: Accidental
 }
 
 let initialized = false
@@ -333,6 +338,16 @@ function findHand(guideHands: GuideHand[], side: HandSide): GuideHand | null {
   return null
 }
 
+// The white key under a finger (before any accidental).
+function getNatural(hand: GuideHand, finger: FingerName): string {
+  for (const guideFinger of hand.fingers) {
+    if (guideFinger.finger === finger) {
+      return guideFinger.natural
+    }
+  }
+  return 'C4' // unreachable: every hand has all four fingers
+}
+
 function getPitch(hand: GuideHand, finger: FingerName): string {
   for (const guideFinger of hand.fingers) {
     if (guideFinger.finger === finger) {
@@ -370,24 +385,43 @@ function updateFingerNotes(side: HandSide, hand: GuideHand, fingers: FingerName[
     }
   }
   for (const finger of fingers) {
-    if (!heldFingers[side].has(finger)) {
-      startFingerNote(side, finger, getPitch(hand, finger), timeMs)
+    const current = heldFingers[side].get(finger)
+    if (current === undefined) {
+      startFingerNote(side, finger, getNatural(hand, finger), hand.accidental, timeMs)
     } else if (lastRetriggered[side].includes(finger)) {
       // Fast repeat on the same finger: end the note and strike it again.
       stopFingerNote(side, finger, timeMs)
-      startFingerNote(side, finger, getPitch(hand, finger), timeMs)
+      startFingerNote(side, finger, getNatural(hand, finger), hand.accidental, timeMs)
+    } else if (current.natural !== undefined && current.accidental !== hand.accidental) {
+      // The hand tilted while holding: same key, new accidental. Struck
+      // again so it sounds and records as the new pitch.
+      stopFingerNote(side, finger, timeMs)
+      startFingerNote(side, finger, current.natural, hand.accidental, timeMs)
     }
   }
 }
 
-function startFingerNote(side: HandSide, finger: FingerName, pitch: string, timeMs: number): void {
+function startFingerNote(
+  side: HandSide,
+  finger: FingerName,
+  natural: string,
+  accidental: Accidental,
+  timeMs: number,
+): void {
   const instrument = getPlayingInstrument()
   const voice = getFingerVoice(instrument, side, finger)
   if (!voice) {
     return
   }
+  const pitch = applyAccidental(natural, accidental)
   voice.noteOn(getNotesToPlay(instrument, pitch), Tone.immediate())
-  heldFingers[side].set(finger, { finger: finger, pitch: pitch, instrument: instrument })
+  heldFingers[side].set(finger, {
+    finger: finger,
+    pitch: pitch,
+    instrument: instrument,
+    natural: natural,
+    accidental: accidental,
+  })
   if (noteLog !== null) {
     const note: RecordedNote = { pitch: pitch, onMs: timeMs, offMs: null }
     noteLog.push(note)

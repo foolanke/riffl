@@ -212,6 +212,15 @@
   left: calc(50% - 5px);
 }
 
+/* ♯ or ♭ just left of the note head (sharps and flats from wrist tilt). */
+.score-accidental {
+  position: absolute;
+  left: calc(50% - 15px);
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-fg);
+}
+
 .score-name {
   position: absolute;
   top: 70px;

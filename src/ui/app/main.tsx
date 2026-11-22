@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { setAccuratePinch } from '../../audio/liveMelody.ts'
 import { initAutoSave } from '../../project/saveLoad.ts'
 import { setFastFrames } from '../../vision/handTracking.ts'
+import { setAccidentalsEnabled } from '../../vision/melodyGuide.ts'
 import { RifflApp } from './RifflApp.tsx'
 import './styles/tokens.css'
 import './styles/app.css'
@@ -32,6 +33,10 @@ setAccuratePinch(true)
 // Track each camera frame the moment it arrives, not when it is shown
 // (about one frame sooner from pinch to sound; see vision/handTracking.ts).
 setFastFrames(true)
+
+// Wrist tilt plays accidentals: right = sharp, left = flat, upright =
+// natural (overrides SPEC 3.3 on this page; see vision/melodyGuide.ts).
+setAccidentalsEnabled(true)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
