@@ -1,10 +1,9 @@
-// Piano overlay (design.md 5.19) while a melody layer is active. The human
-// asked for the octaves stacked instead of side by side, so the camera is
-// cut into three horizontal bands (top C6, middle C5, bottom C4, the same
-// bands the engine uses: melodyGuide.ts setOctaveLayout('rows')), and each
-// band shows its own octave (one design.md 5.19 octave block) in its
-// bottom-left corner. The keys that are sounding light up, and each new
-// note sends out a tap ripple (design.md 5.18) centred on its key.
+// Piano overlay (design.md 5.19) along the bottom of the camera while a
+// melody layer is active: the three octaves side by side (C4, C5, C6). The
+// octave you play in is picked by the horizontal band your thumb is in
+// (top C6, bottom C4, drawn by MelodyGuide), not by these key positions.
+// The white keys that are sounding light up, and each new note sends out
+// a tap ripple (design.md 5.18) centred on its key.
 //
 // Keys and ripples are updated every screen frame straight on the DOM,
 // reading the engine (liveMelody), so React never re-renders per frame.
@@ -15,26 +14,27 @@ import type { InstrumentName } from '../../../audio/instruments.ts'
 import type { HandSide } from '../../../vision/handTracking.ts'
 import { ICONS } from '../icons.ts'
 
-// Top band first: the highest octave is at the top.
-const OCTAVES = [6, 5, 4]
+const OCTAVES = [4, 5, 6]
 const WHITE_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 // Black keys sit on the C|D, D|E, F|G, G|A and A|B borders (white key 1, 2, 4, 5, 6).
 const BLACK_KEY_BORDERS = [1, 2, 4, 5, 6]
 const WHITE_KEY_PERCENT = 100 / 7
 const BLACK_KEY_PERCENT = WHITE_KEY_PERCENT * 0.55
 
-// Octave row box sizes (camera.css .piano-row), used to place ripples.
-const ROW_BORDER = 1
-const ROW_PADDING = 6
-// Ripple centre, as a fraction of the keys' height: low over a white key,
-// and higher over a black key (black keys are 58% as tall).
-const RIPPLE_CENTER = 0.75
-const BLACK_RIPPLE_CENTER = 0.3
+// Overlay box sizes from design.md 5.19, used to place ripples.
+const OVERLAY_BORDER = 1
+const OVERLAY_PADDING = 8
+const OCTAVE_GAP = 8
+// Ripple centre: 95px down from the overlay's top (low over the keys, as in the mock).
+const RIPPLE_CENTER_Y = 95
+// Black keys are shorter (58% of the keys' 116px), so their ripple sits higher.
+const BLACK_RIPPLE_CENTER_Y = 42
 
 const SIDES: HandSide[] = ['left', 'right']
 
 export function PianoOverlay() {
   const overlayRef = useRef<HTMLDivElement>(null)
+  const rippleLayerRef = useRef<HTMLDivElement>(null)
 
   useEffect(function () {
     // The notes each hand was holding last frame, to spot new notes.
@@ -55,7 +55,7 @@ export function PianoOverlay() {
               lit.add(keyPitch)
             }
             if (!lastPitches[side].has(note.pitch)) {
-              addRipple(overlay, note.pitch)
+              addRipple(overlay, rippleLayerRef.current, note.pitch)
             }
           }
           lastPitches[side] = pitches
@@ -76,13 +76,11 @@ export function PianoOverlay() {
     }
   }, [])
 
-  // The overlay covers the camera (not clipped, so ripples can spill);
-  // each octave row sits at the bottom-left of its band (camera.css).
   return (
-    <div className="piano-overlay" ref={overlayRef}>
-      {OCTAVES.map((octave, row) => (
-        <div key={octave} className={'piano-row piano-row-' + row} data-octave={octave}>
-          <div className="piano-octave">
+    <>
+      <div className="piano-overlay" ref={overlayRef}>
+        {OCTAVES.map((octave) => (
+          <div key={octave} className="piano-octave">
             {WHITE_LETTERS.map((letter, index) => (
               <div
                 key={letter}
@@ -104,9 +102,11 @@ export function PianoOverlay() {
             ))}
             <span className="piano-octave-label text-label">C{octave}</span>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      {/* Same box as the overlay, but not clipped, so ripples can spill out. */}
+      <div className="piano-ripple-layer" ref={rippleLayerRef} />
+    </>
   )
 }
 
@@ -128,36 +128,31 @@ function getLitKeys(instrument: InstrumentName, pitch: string): string[] {
 }
 
 // A ripple centred on the key of `pitch`. Notes off the overlay (C7) get none.
-function addRipple(overlay: HTMLDivElement, pitch: string) {
+function addRipple(overlay: HTMLDivElement, layer: HTMLDivElement | null, pitch: string) {
   // e.g. "A#4": letter A, sharp, octave 4. Black keys centre on the border
   // to the right of their letter.
   const keyName = getKeyName(pitch)
   const isBlack = keyName[1] === '#'
-  const octave = keyName.slice(isBlack ? 2 : 1)
+  const octaveIndex = OCTAVES.indexOf(Number(keyName.slice(isBlack ? 2 : 1)))
   const keyIndex = WHITE_LETTERS.indexOf(keyName[0])
-  const row = overlay.querySelector<HTMLElement>('.piano-row[data-octave="' + octave + '"]')
-  if (row === null || keyIndex < 0) {
+  if (layer === null || octaveIndex < 0 || keyIndex < 0) {
     return
   }
-  // offset* and client* are layout pixels, the same units as the CSS
-  // positions, measured from the overlay (which covers the camera).
-  const keysLeft = row.offsetLeft + ROW_BORDER + ROW_PADDING
-  const keysTop = row.offsetTop + ROW_BORDER + ROW_PADDING
-  const keysWidth = row.clientWidth - 2 * ROW_PADDING
-  const keysHeight = row.clientHeight - 2 * ROW_PADDING
-  const keyWidth = keysWidth / 7
+  // clientWidth is in layout pixels, the same units as the CSS positions.
+  const innerWidth = overlay.clientWidth - 2 * OVERLAY_PADDING
+  const octaveWidth = (innerWidth - OCTAVE_GAP * (OCTAVES.length - 1)) / OCTAVES.length
+  const keyWidth = octaveWidth / 7
   const keyCenter = isBlack ? keyIndex + 1 : keyIndex + 0.5
-  const centerX = keysLeft + keyCenter * keyWidth
-  const centerY = keysTop + keysHeight * (isBlack ? BLACK_RIPPLE_CENTER : RIPPLE_CENTER)
+  const centerX = OVERLAY_BORDER + OVERLAY_PADDING + octaveIndex * (octaveWidth + OCTAVE_GAP) + keyCenter * keyWidth
 
   const ripple = document.createElement('img')
   ripple.src = ICONS.tapRipple
   ripple.alt = ''
   ripple.className = 'tap-ripple'
   ripple.style.left = centerX + 'px'
-  ripple.style.top = centerY + 'px'
+  ripple.style.top = (isBlack ? BLACK_RIPPLE_CENTER_Y : RIPPLE_CENTER_Y) + 'px'
   ripple.addEventListener('animationend', function () {
     ripple.remove()
   })
-  overlay.appendChild(ripple)
+  layer.appendChild(ripple)
 }

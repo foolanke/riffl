@@ -1,9 +1,9 @@
 // Melody guide over the camera (SPEC 3.9, design.md 10 Q8, styled in the
 // design's tokens): the octave row borders (the human asked for octaves
-// stacked top to bottom on this page instead of SPEC 3.2's columns), the tracked finger joints, the note
-// name on each fingertip for the column that hand is in, and the notes
-// playing right now shown large. The instrument is in the HUD strip and the
-// column ranges are the piano overlay's octave labels.
+// stacked top to bottom on this page instead of SPEC 3.2's columns: top
+// C6, middle C5, bottom C4), the tracked finger joints, the note name on
+// each fingertip for the row that hand is in, and the notes playing right
+// now shown large. The instrument is in the HUD strip.
 //
 // Drawn on a canvas every screen frame from the engine (hand tracking and
 // liveMelody), so React never re-renders per frame (SPEC 0.1).
@@ -106,7 +106,7 @@ function drawGuide(canvas: HTMLCanvasElement) {
 
   // Tell the engine which part of the (cropped) camera image the rows
   // cover: exactly the visible panel, top to bottom, so the three bands on
-  // screen (and the piano rows in them) are the real hitboxes.
+  // screen are the real hitboxes.
   const areaTop = (0 - fit.offsetY) / fit.height
   const areaBottom = (layoutHeight - fit.offsetY) / fit.height
   setRowArea(areaTop, areaBottom)
