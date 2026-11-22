@@ -32,6 +32,48 @@
   background: var(--color-key-active);
 }
 
+/* Traced silhouette (replaces the corner brackets once traced): 1.5px white
+   outline, translucent white fill with 45° hatching. The hatch lines are
+   drawn in CSS pixels so their spacing doesn't change with the box size. */
+.object-marker.has-silhouette.is-hand-inside {
+  background: none;
+}
+
+.object-silhouette-fill {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: rgba(255, 255, 255, 0.12);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.55) 0,
+    rgba(255, 255, 255, 0.55) 1px,
+    transparent 1px,
+    transparent 8px
+  );
+}
+
+/* Hand inside: the silhouette lights up instead of the whole box. */
+.object-marker.is-hand-inside .object-silhouette-fill {
+  background-color: var(--color-key-active);
+}
+
+.object-silhouette {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.object-silhouette-line {
+  fill: none;
+  stroke: var(--color-fg);
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+}
+
 .object-corner {
   position: absolute;
   width: 20px;
