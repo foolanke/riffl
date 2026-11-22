@@ -276,6 +276,20 @@ export function setObjectOutline(objectId: string, outline: OutlinePoint[]): voi
   setProject({ ...currentProject, objects: updated })
 }
 
+// The object was moved on the table (designed page's auto-detection): new
+// box, and the old outline is dropped so it gets traced again.
+export function moveObjectBox(objectId: string, box: Box): void {
+  const updated: TrackedObject[] = []
+  for (const object of currentProject.objects) {
+    if (object.id === objectId) {
+      updated.push({ id: object.id, drum: object.drum, box: box })
+    } else {
+      updated.push(object)
+    }
+  }
+  setProject({ ...currentProject, objects: updated })
+}
+
 export function findObject(objectId: string | null | undefined): TrackedObject | null {
   for (const object of currentProject.objects) {
     if (object.id === objectId) {

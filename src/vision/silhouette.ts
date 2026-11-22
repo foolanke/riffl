@@ -5,6 +5,11 @@
 // Objects stay still on the table (SPEC 1.2), so this runs once per object.
 // The box itself is still what hit confirmation uses (SPEC 1.4).
 //
+// findObjectBoxAt (designed page, the human's addition to SPEC 1.2): click
+// any object on the camera and the same segmenter, tapped at the click,
+// finds its box. Works for any kind of object, unlike the 80-class
+// detector in objectDetection.ts.
+//
 // Offline rule (SPEC 0.2): model in public/models/, WASM from the npm package.
 import { InteractiveSegmenterLegacy } from '@mediapipe/tasks-vision'
 import wasmLoaderUrl from '@mediapipe/tasks-vision/vision_wasm_internal.js?url'
@@ -94,7 +99,8 @@ export async function traceSilhouette(video: HTMLVideoElement, box: Box): Promis
     each.close()
   }
 
-  const shape = keepMainShape(inside, maskWidth, maskHeight)
+  const centreIndex = Math.floor(maskHeight / 2) * maskWidth + Math.floor(maskWidth / 2)
+  const shape = keepMainShape(inside, maskWidth, maskHeight, centreIndex)
   if (shape === null || shape.area < MIN_AREA_SHARE * maskWidth * maskHeight) {
     return null
   }
@@ -116,6 +122,96 @@ export async function traceSilhouette(video: HTMLVideoElement, box: Box): Promis
   return outline
 }
 
+// ---- Click to add an object ----
+
+// The whole frame is scaled to this many pixels on its longest side.
+const CLICK_FRAME_SIZE = 512
+// The click finds nothing (returns null) if the shape covers more than this
+// share of the picture (bare table, wall) or less than this (a speck).
+const CLICK_MAX_AREA_SHARE = 0.6
+const CLICK_MIN_AREA_SHARE = 0.002
+// Room added around the object on each side, as a share of its size, so a
+// hand touching its edge is still inside the box (SPEC 1.4).
+const CLICK_BOX_PADDING = 0.1
+
+// The box of the object under `point` (camera-image coordinates, 0..1, not
+// mirrored), or null if the click didn't land on a clear, object-sized shape.
+export async function findObjectBoxAt(video: HTMLVideoElement, point: { x: number; y: number }): Promise<Box | null> {
+  const segmenter = await getSegmenter()
+  if (video.videoWidth === 0 || video.videoHeight === 0) {
+    return null
+  }
+  const scale = CLICK_FRAME_SIZE / Math.max(video.videoWidth, video.videoHeight)
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(video.videoWidth * scale)
+  canvas.height = Math.round(video.videoHeight * scale)
+  const context = canvas.getContext('2d')
+  if (!context) {
+    return null
+  }
+  context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+  const result = segmenter.segment(canvas, { keypoint: { x: point.x, y: point.y } })
+  const masks = result.confidenceMasks
+  if (!masks || masks.length === 0) {
+    return null
+  }
+  const mask = masks[masks.length - 1]
+  const confidence = mask.getAsFloat32Array()
+  const width = mask.width
+  const height = mask.height
+  const inside = new Uint8Array(width * height)
+  for (let i = 0; i < inside.length; i++) {
+    inside[i] = confidence[i] >= CONFIDENCE_THRESHOLD ? 1 : 0
+  }
+  for (const each of masks) {
+    each.close()
+  }
+
+  // Only the shape the click is actually on counts (not the biggest one).
+  const seedX = Math.min(width - 1, Math.max(0, Math.floor(point.x * width)))
+  const seedY = Math.min(height - 1, Math.max(0, Math.floor(point.y * height)))
+  const seedIndex = seedY * width + seedX
+  if (inside[seedIndex] === 0) {
+    return null
+  }
+  const shape = keepMainShape(inside, width, height, seedIndex)
+  if (shape === null) {
+    return null
+  }
+  const share = shape.area / (width * height)
+  if (share > CLICK_MAX_AREA_SHARE || share < CLICK_MIN_AREA_SHARE) {
+    return null
+  }
+
+  // Bounding box of the shape, padded, clipped to the picture.
+  let left = width
+  let right = -1
+  let top = height
+  let bottom = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (shape.pixels[y * width + x] === 1) {
+        left = Math.min(left, x)
+        right = Math.max(right, x)
+        top = Math.min(top, y)
+        bottom = Math.max(bottom, y)
+      }
+    }
+  }
+  const boxLeft = left / width
+  const boxTop = top / height
+  const boxWidth = (right + 1 - left) / width
+  const boxHeight = (bottom + 1 - top) / height
+  const padX = boxWidth * CLICK_BOX_PADDING
+  const padY = boxHeight * CLICK_BOX_PADDING
+  const x0 = Math.max(0, boxLeft - padX)
+  const y0 = Math.max(0, boxTop - padY)
+  const x1 = Math.min(1, boxLeft + boxWidth + padX)
+  const y1 = Math.min(1, boxTop + boxHeight + padY)
+  return { x: round4(x0), y: round4(y0), width: round4(x1 - x0), height: round4(y1 - y0) }
+}
+
 // ---- Mask clean-up ----
 
 interface Pixel {
@@ -123,14 +219,19 @@ interface Pixel {
   y: number
 }
 
-// The connected shape under the box centre, or the biggest one if the centre
-// missed. Returns a new mask with only that shape.
-function keepMainShape(mask: Uint8Array, width: number, height: number): { pixels: Uint8Array; area: number } | null {
+// The connected shape under `seedIndex` (the tap), or the biggest one if the
+// tap missed. Returns a new mask with only that shape.
+function keepMainShape(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  seedIndex: number,
+): { pixels: Uint8Array; area: number } | null {
   const labels = new Int32Array(width * height) // 0 = not visited
   let bestLabel = 0
   let bestArea = 0
   let nextLabel = 1
-  const centreIndex = Math.floor(height / 2) * width + Math.floor(width / 2)
+  const centreIndex = seedIndex
   for (let start = 0; start < mask.length; start++) {
     if (mask[start] === 0 || labels[start] !== 0) {
       continue

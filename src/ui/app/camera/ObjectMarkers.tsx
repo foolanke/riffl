@@ -12,17 +12,26 @@
 // and drawn instead of the corner brackets: a white outline with a
 // translucent, diagonally hatched fill. Until then (or if tracing finds
 // nothing), the corner brackets of design.md 5.17 are shown.
+//
+// Auto-detected suggestions (vision/objectDetection.ts, a setting, default
+// on; not in SPEC or the design): dashed boxes tagged e.g. "CUP · ADD".
+// Clicking one adds it as an object, the same as drawing that box.
+// Clicking anything else on the camera cuts out the object under the click
+// (silhouette.ts findObjectBoxAt, any kind of object) and adds it; a click
+// on bare table finds nothing and means "no object" (mic only), as before.
 import { useEffect, useRef } from 'react'
 import type { PointerEvent } from 'react'
 import { getDrumLabel } from '../../../audio/drums.ts'
 import { onLiveHit } from '../../../audio/mic.ts'
-import { getProject, setObjectOutline } from '../../../project/projectStore.ts'
+import { getProject, moveObjectBox, setObjectOutline } from '../../../project/projectStore.ts'
 import type { Box, OutlinePoint, TrackedObject } from '../../../project/projectStore.ts'
 import { getCameraVideo } from '../../../vision/camera.ts'
 import { getLatestHandFrame } from '../../../vision/handTracking.ts'
 import type { HandPoint } from '../../../vision/handTracking.ts'
+import { updateObjectSuggestions } from '../../../vision/objectDetection.ts'
+import type { ObjectSuggestion } from '../../../vision/objectDetection.ts'
 import { MIN_BOX_SIZE, findObjectAtPoint, isPointInBox, makeBoxFromCorners } from '../../../vision/objects.ts'
-import { traceSilhouette } from '../../../vision/silhouette.ts'
+import { findObjectBoxAt, traceSilhouette } from '../../../vision/silhouette.ts'
 import { useProject } from '../../hooks.ts'
 import { ICONS } from '../icons.ts'
 import { boxToPanel, getImageFit, imageToPanel, panelToImage } from './imageFit.ts'
@@ -47,6 +56,28 @@ export function ObjectMarkers(props: ObjectMarkersProps) {
   // The drag in progress, in camera-image coordinates. A ref, so moving the
   // mouse doesn't re-render.
   const dragRef = useRef<{ start: HandPoint; current: HandPoint } | null>(null)
+  const suggestionLayerRef = useRef<HTMLDivElement>(null)
+  // The suggestions on screen right now, for clicks.
+  const suggestionsRef = useRef<ObjectSuggestion[]>([])
+  // Read by the frame loop: no suggestions (and no detector work) during a take.
+  const editableRef = useRef(props.editable)
+  editableRef.current = props.editable
+  // Latest props, for the click-to-add answer that arrives a moment later.
+  const propsRef = useRef(props)
+  propsRef.current = props
+  // A click-to-add is being worked out (one at a time).
+  const findingRef = useRef(false)
+  // The detector saw an added object move or disappear: its box follows,
+  // or it's deleted like the × in its tag (which also unlinks cards).
+  const objectChanges = {
+    move: function (objectId: string, box: Box) {
+      outlineAttempts.delete(objectId) // trace the outline again at the new spot
+      moveObjectBox(objectId, box)
+    },
+    remove: function (objectId: string) {
+      propsRef.current.onDelete(objectId)
+    },
+  }
 
   // Every screen frame: place markers (the fit changes on resize or when the
   // camera starts), light the ones with a hand inside, draw the drag preview.
@@ -57,6 +88,9 @@ export function ObjectMarkers(props: ObjectMarkersProps) {
       if (layer) {
         updateMarkers(layer)
         updateDraft(layer, draftRef.current, dragRef.current)
+        const suggestions = editableRef.current ? updateObjectSuggestions(getProject().objects, objectChanges) : []
+        suggestionsRef.current = suggestions
+        updateSuggestions(layer, suggestionLayerRef.current, suggestions)
       }
       traceMissingOutlines()
       frameId = requestAnimationFrame(draw)
@@ -102,10 +136,47 @@ export function ObjectMarkers(props: ObjectMarkersProps) {
     if (box.width >= MIN_BOX_SIZE && box.height >= MIN_BOX_SIZE) {
       props.onDraw(box)
     } else {
-      // A click: use the box under the mouse, or none.
+      // A click: use the box under the mouse; else add the suggestion under
+      // it (smallest first, so a cup in front of a laptop is reachable); else none.
       const clicked = findObjectAtPoint(getProject().objects, drag.start)
-      props.onSelect(clicked ? clicked.id : null)
+      const suggestion = clicked ? null : findSuggestionAtPoint(suggestionsRef.current, drag.start)
+      if (suggestion) {
+        props.onDraw(suggestion.box)
+      } else if (clicked) {
+        props.onSelect(clicked.id)
+      } else {
+        addObjectAtClick(event.currentTarget, drag.start)
+      }
     }
+  }
+
+  // Cut out the object under the click and add it, or select none (mic only)
+  // if the click was on bare table.
+  function addObjectAtClick(layer: HTMLDivElement, point: HandPoint) {
+    const video = getCameraVideo()
+    if (video === null || findingRef.current) {
+      return
+    }
+    findingRef.current = true
+    layer.classList.add('is-finding')
+    findObjectBoxAt(video, point)
+      .catch(function (error) {
+        console.warn('Click to add object failed', error)
+        return null
+      })
+      .then(function (box) {
+        findingRef.current = false
+        layer.classList.remove('is-finding')
+        const latest = propsRef.current
+        if (!latest.editable) {
+          return // a take started meanwhile
+        }
+        if (box && box.width >= MIN_BOX_SIZE && box.height >= MIN_BOX_SIZE) {
+          latest.onDraw(box)
+        } else {
+          latest.onSelect(null)
+        }
+      })
   }
 
   let layerClass = 'object-layer'
@@ -124,6 +195,7 @@ export function ObjectMarkers(props: ObjectMarkersProps) {
         dragRef.current = null
       }}
     >
+      <div className="object-suggestions" ref={suggestionLayerRef} />
       {objects.map((object) => (
         <ObjectMarker
           key={object.id}
@@ -235,8 +307,9 @@ function traceMissingOutlines() {
     outlineAttempts.add(object.id)
     traceSilhouette(video, object.box)
       .then(function (outline) {
-        // The object may have been deleted while tracing.
-        if (outline && findById(getProject().objects, object.id)) {
+        // The object may have been deleted, or moved, while tracing.
+        const now = findById(getProject().objects, object.id)
+        if (outline && now && now.box === object.box) {
           setObjectOutline(object.id, outline)
         }
       })
@@ -288,6 +361,53 @@ function updateMarkers(layer: HTMLDivElement) {
     marker.classList.toggle('is-tag-below', rect.top < TAG_OFFSET)
     marker.classList.toggle('is-hand-inside', getHandPointsInBox(frame.hands, object.box).length > 0)
   }
+}
+
+// Suggestion boxes, kept in sync by id (plain DOM, no React re-render).
+function updateSuggestions(layer: HTMLDivElement, container: HTMLDivElement | null, suggestions: ObjectSuggestion[]) {
+  if (container === null) {
+    return
+  }
+  const fit = getLayerFit(layer)
+  const wanted = new Set<string>()
+  for (const suggestion of suggestions) {
+    const id = String(suggestion.id)
+    wanted.add(id)
+    let element = container.querySelector<HTMLElement>('[data-id="' + id + '"]')
+    if (element === null) {
+      element = document.createElement('div')
+      element.className = 'object-suggestion'
+      element.dataset.id = id
+      const tag = document.createElement('div')
+      tag.className = 'object-suggestion-tag text-label'
+      element.appendChild(tag)
+      container.appendChild(element)
+    }
+    const tag = element.firstElementChild as HTMLElement
+    const text = (suggestion.label !== '' ? suggestion.label : 'Object') + ' · Add'
+    if (tag.textContent !== text) {
+      tag.textContent = text
+    }
+    const rect = boxToPanel(suggestion.box, fit)
+    placeElement(element, rect)
+    element.classList.toggle('is-tag-below', rect.top < TAG_OFFSET)
+  }
+  for (const element of Array.from(container.children) as HTMLElement[]) {
+    if (!wanted.has(element.dataset.id || '')) {
+      element.remove()
+    }
+  }
+}
+
+function findSuggestionAtPoint(suggestions: ObjectSuggestion[], point: HandPoint): ObjectSuggestion | null {
+  let found: ObjectSuggestion | null = null
+  for (const suggestion of suggestions) {
+    const area = suggestion.box.width * suggestion.box.height
+    if (isPointInBox(point, suggestion.box) && (found === null || area < found.box.width * found.box.height)) {
+      found = suggestion
+    }
+  }
+  return found
 }
 
 function updateDraft(layer: HTMLDivElement, draft: HTMLDivElement | null, drag: { start: HandPoint; current: HandPoint } | null) {

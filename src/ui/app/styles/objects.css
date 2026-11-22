@@ -14,6 +14,11 @@
   cursor: crosshair;
 }
 
+/* Working out the object under a click (takes a moment). */
+.object-layer.is-editable.is-finding {
+  cursor: progress;
+}
+
 /* 5.17 Object marker: four corner brackets and a tag, no fill or outline. */
 .object-marker {
   position: absolute;
@@ -140,6 +145,37 @@
   display: none;
   border: 1px dashed var(--color-fg);
   pointer-events: none;
+}
+
+/* Auto-detected suggestion (not designed; the human asked for it): a
+   dashed muted outline like the drag preview, with a tag in the hint-pill
+   style (overlay fill, muted text) so it reads as "not added yet". */
+.object-suggestions {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.object-suggestion {
+  position: absolute;
+  border: 1px dashed var(--color-fg-muted);
+  border-radius: var(--radius-small);
+}
+
+.object-suggestion-tag {
+  position: absolute;
+  top: -32px;
+  left: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-small);
+  background: var(--color-overlay);
+  color: var(--color-fg-muted);
+  white-space: nowrap;
+}
+
+.object-suggestion.is-tag-below .object-suggestion-tag {
+  top: auto;
+  bottom: -32px;
 }
 
 .object-ripple {

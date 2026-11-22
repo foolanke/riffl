@@ -19,6 +19,11 @@ import {
   updateSettings,
 } from '../../../project/projectStore.ts'
 import type { CountInBars, LoopBars, TimeSignature } from '../../../project/projectStore.ts'
+import {
+  getAutoDetectObjects,
+  setAutoDetectObjects,
+  subscribeToAutoDetectObjects,
+} from '../../../vision/objectDetection.ts'
 import { getMultiFingerPinch, subscribeToMultiFingerPinch } from '../../../vision/pinchAccurate.ts'
 import { useProject } from '../../hooks.ts'
 import { ChipSelect } from '../components/ChipSelect.tsx'
@@ -94,6 +99,7 @@ function SettingsBody(props: { showMic: boolean }) {
   // Changing these mid-take would break the take.
   const takeRunning = recorder.status !== 'idle'
   const multiFinger = useSyncExternalStore(subscribeToMultiFingerPinch, getMultiFingerPinch)
+  const autoDetect = useSyncExternalStore(subscribeToAutoDetectObjects, getAutoDetectObjects)
 
   return (
     <div className="settings-body">
@@ -163,6 +169,16 @@ function SettingsBody(props: { showMic: boolean }) {
             label="Mute other layers while recording"
             onChange={setMuteLayersWhileRecording}
           />
+        </SettingsRow>
+      </SettingsGroup>
+
+      {/* Auto-detected object suggestions (the human's addition to SPEC 1.2). */}
+      <SettingsGroup title="Objects">
+        <SettingsRow
+          label="Suggest objects"
+          title="Find cups, bottles, books and other things on the camera; click one to add it as an object."
+        >
+          <ToggleSwitch on={autoDetect} label="Suggest objects found on the camera" onChange={setAutoDetectObjects} />
         </SettingsRow>
       </SettingsGroup>
 
