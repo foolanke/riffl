@@ -153,12 +153,35 @@ export function useLayerCards(): LayerCards {
     if (getRecorderState().status !== 'idle') {
       return
     }
+    const objectId = getLinkedObjectId(item)
     if (item.layer) {
       deleteLayer(item.layer.id)
     } else if (item.draft) {
       const draftKey = item.draft.key
       setDrafts(drafts.filter((draft) => draft.key !== draftKey))
     }
+    // Its object goes too, unless another card still plays on it. Otherwise
+    // the box stays on the camera after the layer is gone, and a fresh card
+    // would show it even when that object isn't on the table any more.
+    if (objectId !== null && !isObjectUsedByOtherCard(objectId, item)) {
+      deleteObjectById(objectId)
+    }
+  }
+
+  function isObjectUsedByOtherCard(objectId: string, deleted: LayerItem): boolean {
+    for (const layer of getProject().layers) {
+      if (layer.type === 'drum' && layer.objectId === objectId && (!deleted.layer || layer.id !== deleted.layer.id)) {
+        return true
+      }
+    }
+    // Only drafts still on the page (draftObjects keeps entries of drafts
+    // that were recorded into layers or deleted).
+    for (const draft of drafts) {
+      if (draftObjects[draft.key] === objectId && (!deleted.draft || draft.key !== deleted.draft.key)) {
+        return true
+      }
+    }
+    return false
   }
 
   // Link an object (or none = mic only) to a drum card. Picking an object
