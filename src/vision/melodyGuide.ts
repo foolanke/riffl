@@ -49,6 +49,45 @@ export function setColumnPoint(point: ColumnPoint): void {
   columnPoint = point
 }
 
+// ---- Octave rows (designed page only, additive) ----
+// The human asked for the octaves to be stacked instead of side by side:
+// the screen is cut into three horizontal bands, top = C6, middle = C5,
+// bottom = C4, so moving a hand up and down changes the octave. Same dead
+// zone and the same deciding point (thumb tip or palm) as the columns.
+// The test page never calls this and keeps SPEC 3.2's columns.
+export type OctaveLayout = 'columns' | 'rows'
+let octaveLayout: OctaveLayout = 'columns'
+// The part of the camera image (0-1, top to bottom) the three rows divide:
+// the designed page sets it to the visible part of its cropped camera.
+let rowAreaTop = 0
+let rowAreaBottom = 1
+
+export function setOctaveLayout(layout: OctaveLayout): void {
+  if (layout !== octaveLayout) {
+    octaveLayout = layout
+    currentColumn.left = null // the old zone means nothing in the new layout
+    currentColumn.right = null
+  }
+}
+
+export function setRowArea(top: number, bottom: number): void {
+  if (bottom - top > 0.0001) {
+    rowAreaTop = top
+    rowAreaBottom = bottom
+  }
+}
+
+// Where the border above `row` sits (0-1 of the camera image, top to
+// bottom). Border 0 is the area's top edge, COLUMN_COUNT its bottom.
+export function getRowBorder(row: number): number {
+  return rowAreaTop + (row / COLUMN_COUNT) * (rowAreaBottom - rowAreaTop)
+}
+
+// The octave a row plays: row 0 (top) is the highest.
+export function getRowOctave(row: number): number {
+  return COLUMN_START_OCTAVES[COLUMN_COUNT - 1 - row]
+}
+
 // Where the border before `column` sits on the mirrored screen (0-1 of the
 // camera image). Border 0 is the area's left edge, COLUMN_COUNT its right.
 export function getColumnBorder(column: number): number {
@@ -66,8 +105,14 @@ export function getColumnBorder(column: number): number {
 // fingers pinch, so pinching doesn't change the accidental.
 // Hysteresis like the column dead zone: a hand has to tilt past ENTER to
 // switch to sharp/flat, and come back inside EXIT to be natural again.
-const TILT_ENTER_DEGREES = 25
-const TILT_EXIT_DEGREES = 15
+// The human asked for the outward lean to be lighter: the left hand's flat
+// (lean left) and the right hand's sharp (lean right) need only 12 degrees,
+// while the inward lean (left hand sharp, right hand flat) stays at 22.
+// EXIT is a few degrees under ENTER so a wobbling hand doesn't flicker.
+const TILT_OUTWARD_ENTER_DEGREES = 12
+const TILT_OUTWARD_EXIT_DEGREES = 6
+const TILT_INWARD_ENTER_DEGREES = 22
+const TILT_INWARD_EXIT_DEGREES = 14
 const WRIST = 0
 const MIDDLE_FINGER_BASE = 9
 
@@ -117,7 +162,10 @@ export interface GuideFinger {
 
 export interface GuideHand {
   side: HandSide
-  column: number // 0 = left column, 2 = right column (screen)
+  // Octave zone. Columns: 0 = left column, 2 = right (screen).
+  // Rows (designed page): 0 = top row, 2 = bottom row.
+  column: number
+  octave: number // the octave the zone plays (C of the zone), e.g. 5
   palm: HandPoint // camera coordinates
   fingers: GuideFinger[]
   points: HandPoint[] // all 21 tracked points, for pinch detection
@@ -154,13 +202,24 @@ export function getGuideHands(frame: HandFrame): GuideHand[] {
     const tiltDegrees = getTiltDegrees(points, frame.aspect)
     const accidental = accidentalsOn ? updateAccidental(side, tiltDegrees) : 0
     const palm = getPalmCenter(points)
-    const columnX = columnPoint === 'thumb' ? points[THUMB_TIP].x : palm.x
-    const column = updateColumn(side, 1 - columnX)
+    const zonePoint = columnPoint === 'thumb' ? points[THUMB_TIP] : palm
+    let column = 0
+    let octave = 4
+    if (octaveLayout === 'rows') {
+      // Image y isn't mirrored: 0 is the top of the picture, as on screen.
+      const areaY = (zonePoint.y - rowAreaTop) / (rowAreaBottom - rowAreaTop)
+      column = updateColumnInArea(side, areaY)
+      octave = getRowOctave(column)
+    } else {
+      column = updateColumn(side, 1 - zonePoint.x)
+      octave = COLUMN_START_OCTAVES[column]
+    }
     guideHands.push({
       side: side,
       column: column,
+      octave: octave,
       palm: palm,
-      fingers: getFingers(points, side, column, accidental),
+      fingers: getFingers(points, side, octave, accidental),
       points: points,
       tiltDegrees: tiltDegrees,
       accidental: accidental,
@@ -209,6 +268,8 @@ function updateColumn(side: HandSide, screenX: number): number {
   return updateColumnInArea(side, areaX)
 }
 
+// Works for rows too: position 0-1 along the area (top to bottom), and
+// "left/right" then mean "up/down".
 function updateColumnInArea(side: HandSide, screenX: number): number {
   const rawColumn = Math.min(COLUMN_COUNT - 1, Math.max(0, Math.floor(screenX * COLUMN_COUNT)))
   const previous = currentColumn[side]
@@ -228,11 +289,11 @@ function updateColumnInArea(side: HandSide, screenX: number): number {
   return column
 }
 
-function getFingers(points: HandPoint[], side: HandSide, column: number, accidental: Accidental): GuideFinger[] {
+function getFingers(points: HandPoint[], side: HandSide, zoneOctave: number, accidental: Accidental): GuideFinger[] {
   const fingers: GuideFinger[] = []
   for (const fingertip of FINGERTIPS) {
     const note = FINGER_NOTES[side][fingertip.finger]
-    const octave = COLUMN_START_OCTAVES[column] + note.octaveOffset
+    const octave = zoneOctave + note.octaveOffset
     const natural = note.letter + octave
     fingers.push({
       finger: fingertip.finger,
@@ -256,18 +317,25 @@ function getTiltDegrees(points: HandPoint[], aspect: number): number {
 }
 
 function updateAccidental(side: HandSide, tiltDegrees: number): Accidental {
+  // Sharp is a lean right: outward for the right hand, inward for the left.
+  const sharpEnter = side === 'right' ? TILT_OUTWARD_ENTER_DEGREES : TILT_INWARD_ENTER_DEGREES
+  const sharpExit = side === 'right' ? TILT_OUTWARD_EXIT_DEGREES : TILT_INWARD_EXIT_DEGREES
+  // Flat is a lean left: outward for the left hand, inward for the right.
+  const flatEnter = side === 'left' ? TILT_OUTWARD_ENTER_DEGREES : TILT_INWARD_ENTER_DEGREES
+  const flatExit = side === 'left' ? TILT_OUTWARD_EXIT_DEGREES : TILT_INWARD_EXIT_DEGREES
+
   const current = currentAccidental[side]
   let next: Accidental = current
   if (current === 0) {
-    if (tiltDegrees > TILT_ENTER_DEGREES) {
+    if (tiltDegrees > sharpEnter) {
       next = 1
-    } else if (tiltDegrees < -TILT_ENTER_DEGREES) {
+    } else if (tiltDegrees < -flatEnter) {
       next = -1
     }
-  } else if (current === 1 && tiltDegrees < TILT_EXIT_DEGREES) {
-    next = tiltDegrees < -TILT_ENTER_DEGREES ? -1 : 0
-  } else if (current === -1 && tiltDegrees > -TILT_EXIT_DEGREES) {
-    next = tiltDegrees > TILT_ENTER_DEGREES ? 1 : 0
+  } else if (current === 1 && tiltDegrees < sharpExit) {
+    next = tiltDegrees < -flatEnter ? -1 : 0
+  } else if (current === -1 && tiltDegrees > -flatExit) {
+    next = tiltDegrees > sharpEnter ? 1 : 0
   }
   currentAccidental[side] = next
   return next

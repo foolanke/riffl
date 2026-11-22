@@ -1,5 +1,6 @@
 // Melody guide over the camera (SPEC 3.9, design.md 10 Q8, styled in the
-// design's tokens): the column borders, the tracked finger joints, the note
+// design's tokens): the octave row borders (the human asked for octaves
+// stacked top to bottom on this page instead of SPEC 3.2's columns), the tracked finger joints, the note
 // name on each fingertip for the column that hand is in, and the notes
 // playing right now shown large. The instrument is in the HUD strip and the
 // column ranges are the piano overlay's octave labels.
@@ -19,10 +20,11 @@ import { getLatestHandFrame, getTrackingTimings } from '../../../vision/handTrac
 import type { HandPoint, HandSide } from '../../../vision/handTracking.ts'
 import {
   COLUMN_COUNT,
-  getColumnBorder,
   getGuideHands,
-  setColumnArea,
+  getRowBorder,
   setColumnPoint,
+  setOctaveLayout,
+  setRowArea,
 } from '../../../vision/melodyGuide.ts'
 import { getImageFit, imageToPanel } from './imageFit.ts'
 import type { ImageFit } from './imageFit.ts'
@@ -51,17 +53,14 @@ const SIDES: HandSide[] = ['left', 'right']
 // hand sizes, "3D / flat picture") above its note label. Hidden otherwise; not part of the design.
 const SHOW_PINCH_DEBUG = new URLSearchParams(window.location.search).has('pinchdebug')
 
-// The columns line up with the piano overlay's octaves (design.md 5.19):
-// overlay inset 15 + border 1 + padding 8, minus half the 8px octave gap,
-// so each column border runs down the middle of the gap between octaves.
-const COLUMN_AREA_INSET = 15 + 1 + 8 - 4
-
 export function MelodyGuide() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(function () {
-    // Decide a hand's column where the pinch happens (the thumb tip), not
-    // at the palm, so the note matches the column the fingers touch in.
+    // Octaves stacked in three rows: top C6, middle C5, bottom C4.
+    setOctaveLayout('rows')
+    // Decide a hand's row where the pinch happens (the thumb tip), not
+    // at the palm, so the note matches the row the fingers touch in.
     setColumnPoint('thumb')
     let frameId = 0
     function draw() {
@@ -105,17 +104,18 @@ function drawGuide(canvas: HTMLCanvasElement) {
 
   const fit = getImageFit(layoutWidth, layoutHeight)
 
-  // Tell the engine which part of the (cropped, mirrored) camera image the
-  // columns cover: the piano overlay's span, in mirrored image fractions.
-  const areaLeft = (COLUMN_AREA_INSET - fit.offsetX) / fit.width
-  const areaRight = (layoutWidth - COLUMN_AREA_INSET - fit.offsetX) / fit.width
-  setColumnArea(areaLeft, areaRight)
+  // Tell the engine which part of the (cropped) camera image the rows
+  // cover: exactly the visible panel, top to bottom, so the three bands on
+  // screen (and the piano rows in them) are the real hitboxes.
+  const areaTop = (0 - fit.offsetY) / fit.height
+  const areaBottom = (layoutHeight - fit.offsetY) / fit.height
+  setRowArea(areaTop, areaBottom)
 
-  // Column borders, at the same places the engine switches columns.
+  // Row borders, at the same places the engine switches octaves.
   context.fillStyle = COLOR_FG
-  for (let column = 1; column < COLUMN_COUNT; column++) {
-    const x = Math.round(fit.offsetX + getColumnBorder(column) * fit.width)
-    context.fillRect(x, 0, 1, layoutHeight)
+  for (let row = 1; row < COLUMN_COUNT; row++) {
+    const y = Math.round(fit.offsetY + getRowBorder(row) * fit.height)
+    context.fillRect(0, y, layoutWidth, 1)
   }
 
   const frame = getLatestHandFrame()
