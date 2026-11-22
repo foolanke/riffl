@@ -26,6 +26,7 @@ import {
 } from '../../../vision/objectDetection.ts'
 import { getMultiFingerPinch, subscribeToMultiFingerPinch } from '../../../vision/pinchAccurate.ts'
 import { useProject } from '../../hooks.ts'
+import { setShowPiano, useShowPiano } from '../hooks/pianoSetting.ts'
 import { ChipSelect } from '../components/ChipSelect.tsx'
 import { OutlineButton } from '../components/OutlineButton.tsx'
 import { ToggleSwitch } from '../components/ToggleSwitch.tsx'
@@ -100,6 +101,7 @@ function SettingsBody(props: { showMic: boolean }) {
   const takeRunning = recorder.status !== 'idle'
   const multiFinger = useSyncExternalStore(subscribeToMultiFingerPinch, getMultiFingerPinch)
   const autoDetect = useSyncExternalStore(subscribeToAutoDetectObjects, getAutoDetectObjects)
+  const showPiano = useShowPiano()
 
   return (
     <div className="settings-body">
@@ -184,6 +186,9 @@ function SettingsBody(props: { showMic: boolean }) {
 
       {/* Hand notes (team option; SPEC 3.4 default is one note per hand). */}
       <SettingsGroup title="Melody">
+        <SettingsRow label="Show keyboard" title="Show the piano keyboard along the bottom of the camera while a melody layer is active.">
+          <ToggleSwitch on={showPiano} label="Show the piano keyboard over the camera" onChange={setShowPiano} />
+        </SettingsRow>
         <SettingsRow
           label="Multi-finger notes"
           title="Off: one note per hand. On: several fingers on one hand can play at once."

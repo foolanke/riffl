@@ -10,6 +10,7 @@ import { HintPill } from './HintPill.tsx'
 import { HudStrip } from './HudStrip.tsx'
 import { MelodyGuide } from './MelodyGuide.tsx'
 import { PianoOverlay } from './PianoOverlay.tsx'
+import { useShowPiano } from '../hooks/pianoSetting.ts'
 
 interface CameraViewProps {
   hudLabel: string // "SETUP / CAMERA" or "LAYER 01 / SNARE"
@@ -20,6 +21,8 @@ interface CameraViewProps {
 }
 
 export function CameraView(props: CameraViewProps) {
+  // The keyboard is a setting (off by default), and only for melody layers.
+  const pianoShown = useShowPiano() && props.melodyActive
   const videoHolderRef = useRef<HTMLDivElement>(null)
 
   useEffect(function () {
@@ -45,8 +48,8 @@ export function CameraView(props: CameraViewProps) {
       {props.melodyActive && props.cameraOk ? <MelodyGuide /> : null}
       <HudStrip label={props.hudLabel} />
       {props.objectMarkers}
-      {props.melodyActive ? <PianoOverlay /> : null}
-      {props.hintText !== null ? <HintPill text={props.hintText} raised={props.melodyActive} /> : null}
+      {pianoShown ? <PianoOverlay /> : null}
+      {props.hintText !== null ? <HintPill text={props.hintText} raised={pianoShown} /> : null}
     </div>
   )
 }

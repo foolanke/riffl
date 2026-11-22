@@ -38,15 +38,17 @@
   pointer-events: none;
 }
 
-/* ---- 5.19 Piano overlay ---- */
+/* ---- 5.19 Piano overlay ----
+   Lower and shorter than design.md's 132px at bottom 15 (the human said it
+   covered too much of the camera): 72px tall, 6px from the bottom. */
 
 .piano-overlay,
 .piano-ripple-layer {
   position: absolute;
   left: 15px;
   right: 15px;
-  bottom: 15px;
-  height: 132px;
+  bottom: 6px;
+  height: 72px;
 }
 
 .piano-overlay {
@@ -102,7 +104,7 @@
 .piano-octave-label {
   position: absolute;
   left: 8px;
-  top: 95px;
+  bottom: 4px;
 }
 
 /* A sounding sharp or flat (wrist tilt) lights its black key. Solid light
@@ -178,7 +180,7 @@
   overflow: hidden;
 }
 
-/* Above the piano overlay (132 tall at bottom 15) with an 8px gap. */
+/* Above the piano overlay (72 tall at bottom 6) with an 8px gap. */
 .hint-pill.is-raised {
-  bottom: 155px;
+  bottom: 86px;
 }

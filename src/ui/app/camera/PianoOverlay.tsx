@@ -25,10 +25,11 @@ const BLACK_KEY_PERCENT = WHITE_KEY_PERCENT * 0.55
 const OVERLAY_BORDER = 1
 const OVERLAY_PADDING = 8
 const OCTAVE_GAP = 8
-// Ripple centre: 95px down from the overlay's top (low over the keys, as in the mock).
-const RIPPLE_CENTER_Y = 95
-// Black keys are shorter (58% of the keys' 116px), so their ripple sits higher.
-const BLACK_RIPPLE_CENTER_Y = 42
+// Ripple centre: low over the keys, as in the mock (scaled to the shorter
+// 72px overlay: keys 56px tall from 8px down).
+const RIPPLE_CENTER_Y = 50
+// Black keys are shorter (58% of the keys' 56px), so their ripple sits higher.
+const BLACK_RIPPLE_CENTER_Y = 24
 
 const SIDES: HandSide[] = ['left', 'right']
 
