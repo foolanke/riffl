@@ -1,5 +1,5 @@
 // Layer card (design.md 5.9): collapsed = number, sound, chevron right.
-// Expanded = header, RECORD, audio bar, sound Select, MUTE / DELETE row.
+// Expanded = header, RECORD, audio bar, sound (read-only), MUTE / DELETE row.
 // A draft card (not recorded yet) records a new take; a recorded card retakes it.
 import type { RecordStatus } from '../../../audio/recorder.ts'
 import { toggleLayerMuted } from '../../../project/projectStore.ts'
@@ -8,9 +8,7 @@ import { RecordButton } from '../components/RecordButton.tsx'
 import { releaseFocus } from '../components/releaseFocus.ts'
 import { ICONS } from '../icons.ts'
 import { AudioBar } from './AudioBar.tsx'
-import { getItemSound } from './layerItems.ts'
-import type { LayerItem, LayerSound } from './layerItems.ts'
-import { SoundSelect } from './SoundSelect.tsx'
+import type { LayerItem } from './layerItems.ts'
 
 const RECORD_LABELS: Record<RecordStatus, string> = {
   idle: 'Record',
@@ -27,7 +25,6 @@ interface LayerCardProps {
   message: string // status or result of the last take; '' = none
   onActivate: () => void
   onRecord: () => void
-  onSoundChange: (sound: LayerSound) => void
   onDelete: () => void // recorded layer: from the project; draft: from the page
 }
 
@@ -71,13 +68,9 @@ export function LayerCard(props: LayerCardProps) {
 
           <AudioBar layer={item.layer} />
 
-          <SoundSelect
-            sound={getItemSound(item)}
-            showDrums={item.draft !== null || (item.layer !== null && item.layer.type === 'drum')}
-            showInstruments={item.draft !== null || (item.layer !== null && item.layer.type === 'melody')}
-            disabled={isBusy}
-            onChange={props.onSoundChange}
-          />
+          {/* The sound is chosen once, from ADD LAYER, so here it is a
+              read-only label in the Select's box (same place and size). */}
+          <div className="select is-readonly text-item">{item.soundLabel.toUpperCase()}</div>
 
           {/* Mute and delete (SPEC 1.6). A draft has nothing to mute yet. */}
           <div className="layer-card-actions">

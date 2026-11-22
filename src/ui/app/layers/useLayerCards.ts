@@ -16,9 +16,7 @@ import {
   findObject,
   getProject,
   setLayerDrum,
-  setLayerInstrument,
   setLayerObject,
-  setObjectDrum,
 } from '../../../project/projectStore.ts'
 import type { Box } from '../../../project/projectStore.ts'
 import { useProject } from '../../hooks.ts'
@@ -33,9 +31,8 @@ export interface LayerCards {
   recordingKey: string | null // the card whose take is in progress
   isExpanded: (item: LayerItem) => boolean // only the active card can be open
   activate: (item: LayerItem) => void // another card: make it active and open; the active one: open/close it
-  addLayer: () => void
+  addLayer: (sound: LayerSound) => void // the sound picked from the ADD LAYER menu
   record: (item: LayerItem) => Promise<void>
-  changeSound: (item: LayerItem, sound: LayerSound) => void
   deleteCard: (item: LayerItem) => void
   getLinkedObjectId: (item: LayerItem) => string | null
   drawObject: (box: Box) => void
@@ -88,15 +85,9 @@ export function useLayerCards(): LayerCards {
     return findLinkedObjectId(item, draftObjects)
   }
 
-  function addLayer() {
-    // A new layer starts on the sound picked last, or kick.
-    let sound: LayerSound = { kind: 'drum', drum: 'kick' }
-    if (activeItem) {
-      const itemSound = getItemSound(activeItem)
-      if (itemSound) {
-        sound = itemSound
-      }
-    }
+  // A new draft card with the sound picked from the ADD LAYER menu. Its sound
+  // never changes after this (only an object link can set a drum, step 24).
+  function addLayer(sound: LayerSound) {
     const draft: DraftLayer = { key: crypto.randomUUID(), sound: sound }
     setDrafts([...drafts, draft])
     setActiveKey(draft.key)
@@ -153,26 +144,6 @@ export function useLayerCards(): LayerCards {
         setActiveKey(layer.id)
         return
       }
-    }
-  }
-
-  function changeSound(item: LayerItem, sound: LayerSound) {
-    if (item.draft) {
-      const draftKey = item.draft.key
-      setDrafts(
-        drafts.map(function (draft) {
-          return draft.key === draftKey ? { key: draftKey, sound: sound } : draft
-        }),
-      )
-    } else if (item.layer && item.layer.type === 'drum' && sound.kind === 'drum') {
-      setLayerDrum(item.layer.id, sound.drum)
-    } else if (item.layer && item.layer.type === 'melody' && sound.kind === 'melody') {
-      setLayerInstrument(item.layer.id, sound.instrument)
-    }
-    // A card and its object always play the same drum.
-    const objectId = getLinkedObjectId(item)
-    if (objectId !== null && sound.kind === 'drum') {
-      setObjectDrum(objectId, sound.drum)
     }
   }
 
@@ -256,7 +227,6 @@ export function useLayerCards(): LayerCards {
     activate: activate,
     addLayer: addLayer,
     record: record,
-    changeSound: changeSound,
     deleteCard: deleteCard,
     getLinkedObjectId: getLinkedObjectId,
     drawObject: drawObject,

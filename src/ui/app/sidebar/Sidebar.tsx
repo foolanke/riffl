@@ -5,9 +5,8 @@ import { downloadProjectFile } from '../../../project/saveLoad.ts'
 import { useProject } from '../../hooks.ts'
 import { DownloadButton } from '../components/DownloadButton.tsx'
 import { SectionTitle } from '../components/Glyphs.tsx'
-import { releaseFocus } from '../components/releaseFocus.ts'
 import { useRecorder } from '../hooks/engineState.ts'
-import { ICONS } from '../icons.ts'
+import { AddLayerMenu } from '../layers/AddLayerMenu.tsx'
 import { LayerCard } from '../layers/LayerCard.tsx'
 import type { LayerCards } from '../layers/useLayerCards.ts'
 import { BrandBadge } from './BrandBadge.tsx'
@@ -29,18 +28,9 @@ export function Sidebar(props: SidebarProps) {
     <aside className="sidebar">
       <BrandBadge audioStarted />
       {/* ADD LAYER sits at the top of the sidebar as a white, primary button
-          (moved here from the bottom Layers panel at the human's request). */}
-      <button
-        className="button-filled button-add-layer text-item"
-        type="button"
-        onClick={(event) => {
-          cards.addLayer()
-          releaseFocus(event.currentTarget)
-        }}
-      >
-        <img src={ICONS.plus} alt="" />
-        Add layer
-      </button>
+          (moved here from the bottom Layers panel at the human's request).
+          It drops down the sounds; the pick is the new layer's sound. */}
+      <AddLayerMenu onAdd={cards.addLayer} />
       <MetronomeStrip />
 
       {cards.cardOrder.length > 0 ? (
@@ -58,7 +48,6 @@ export function Sidebar(props: SidebarProps) {
                 message={isActive ? recorder.message : ''}
                 onActivate={() => cards.activate(item)}
                 onRecord={() => cards.record(item)}
-                onSoundChange={(sound) => cards.changeSound(item, sound)}
                 onDelete={() => cards.deleteCard(item)}
               />
             )

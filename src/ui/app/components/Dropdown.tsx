@@ -1,14 +1,16 @@
 // A dropdown that animates (native <select> lists can't): the option list
 // fades in while sliding from the trigger, and out again on close; the
 // chevron turns. Used by Select (design.md 5.8) and ChipSelect (the BPM
-// chip, 5.4); closed, it looks exactly like them.
+// chip, 5.4); closed, it looks exactly like them. The 'menu' variant is an
+// action menu (ADD LAYER): the trigger is any button look, nothing is
+// selected, and every pick calls onChange.
 //
 // The list is drawn in #root (so the page zoom applies) with fixed
 // positioning, so a parent with overflow: hidden (sidebar, settings panel)
 // can't clip it. Mouse: click to open, click an option. Keyboard: arrows,
 // Enter, Escape. After a choice, focus leaves the trigger so Space records.
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { usePresence } from '../hooks/usePresence.ts'
 import { ICONS } from '../icons.ts'
@@ -25,12 +27,14 @@ export interface DropdownGroup {
 }
 
 interface DropdownProps {
-  variant: 'select' | 'chip' // full-width Select or the small BPM chip
+  variant: 'select' | 'chip' | 'menu' // full-width Select, the small BPM chip, or an action menu
   label: string // read by screen readers
-  value: string
+  value: string // '' in a menu: nothing is selected
   groups: DropdownGroup[]
   disabled?: boolean
   onChange: (value: string) => void
+  triggerClassName?: string // menu only: the trigger button's look
+  children?: ReactNode // menu only: the trigger button's content
 }
 
 const ANIMATION_MS = 120 // keep in step with the dropdown-menu animations in components.css
@@ -70,7 +74,7 @@ export function Dropdown(props: DropdownProps) {
       return
     }
     setPlace(measurePlace(triggerRef.current))
-    setHighlighted(props.value)
+    setHighlighted(props.value === '' ? null : props.value) // a menu starts with nothing highlighted
     setOpen(true)
   }
 
@@ -82,7 +86,8 @@ export function Dropdown(props: DropdownProps) {
   }
 
   function choose(value: string) {
-    if (value !== props.value) {
+    // A menu is an action: every pick counts, even the same one twice.
+    if (props.variant === 'menu' || value !== props.value) {
       props.onChange(value)
     }
     closeMenu()
@@ -182,7 +187,12 @@ export function Dropdown(props: DropdownProps) {
     }
   }
 
-  let wrapperClass = props.variant === 'chip' ? 'bpm-chip' : 'select'
+  let wrapperClass = 'select'
+  if (props.variant === 'chip') {
+    wrapperClass = 'bpm-chip'
+  } else if (props.variant === 'menu') {
+    wrapperClass = 'dropdown-action'
+  }
   if (props.disabled) {
     wrapperClass += ' is-disabled'
   }
@@ -204,7 +214,7 @@ export function Dropdown(props: DropdownProps) {
     <div className={wrapperClass}>
       <button
         ref={triggerRef}
-        className="dropdown-trigger text-item"
+        className={props.variant === 'menu' ? props.triggerClassName : 'dropdown-trigger text-item'}
         type="button"
         aria-label={props.label}
         aria-haspopup="listbox"
@@ -213,16 +223,22 @@ export function Dropdown(props: DropdownProps) {
         onClick={() => (open ? closeMenu() : openMenu())}
         onKeyDown={handleKeyDown}
       >
-        {/* Every option, stacked and hidden, so the trigger is as wide as
-            the widest one (like a native select) and never jumps in size. */}
-        <span className="dropdown-value">{selectedText.toUpperCase()}</span>
-        {allOptions.map((option) => (
-          <span key={option.value} className="dropdown-sizer" aria-hidden="true">
-            {option.text.toUpperCase()}
-          </span>
-        ))}
+        {props.variant === 'menu' ? (
+          props.children
+        ) : (
+          <>
+            {/* Every option, stacked and hidden, so the trigger is as wide as
+                the widest one (like a native select) and never jumps in size. */}
+            <span className="dropdown-value">{selectedText.toUpperCase()}</span>
+            {allOptions.map((option) => (
+              <span key={option.value} className="dropdown-sizer" aria-hidden="true">
+                {option.text.toUpperCase()}
+              </span>
+            ))}
+          </>
+        )}
       </button>
-      <img src={ICONS.chevronDown} alt="" />
+      {props.variant === 'menu' ? null : <img src={ICONS.chevronDown} alt="" />}
 
       {presence.mounted && place && root
         ? createPortal(

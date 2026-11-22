@@ -144,6 +144,13 @@
   filter: invert(1);
 }
 
+/* The ADD LAYER menu's wrapper (Dropdown variant 'menu'): just holds the
+   full-width button; the list itself is the shared .dropdown-menu. */
+.dropdown-action {
+  flex-shrink: 0;
+  width: 100%;
+}
+
 .button-filled:active:not(:disabled) {
   opacity: 0.8;
 }
@@ -312,6 +319,18 @@
   transform: translateY(-50%);
   transition: transform 150ms ease-out;
   pointer-events: none;
+}
+
+/* A layer's sound, read-only: the Select's box and text without the chevron
+   (the sound is picked once, from ADD LAYER). Same 40px height as 5.8. */
+.select.is-readonly {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px 8px 16px;
+}
+
+.select.is-readonly:hover {
+  border-color: var(--color-line);
 }
 
 /* ---- Dropdown list (Dropdown.tsx; not in the design, built from its tokens) ---- */
