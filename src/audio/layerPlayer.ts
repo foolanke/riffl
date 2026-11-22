@@ -3,14 +3,22 @@
 // It reads the project data at schedule time, so mute/delete take effect
 // within one scheduling window (~0.1s).
 import * as Tone from 'tone'
-import { getProject } from '../project/projectStore.ts'
+import { getLayerVolume, getProject } from '../project/projectStore.ts'
 import { getLoopStepAtTime, getTicksPerStep } from './clock.ts'
 import { getNotesToPlay } from './instruments.ts'
 import { playMelodyNotes } from './melodySynths.ts'
 import { isLayerSilencedAt } from './recorder.ts'
-import { playDrum } from './samples.ts'
+import { playDrum, playDrumAtVolume } from './samples.ts'
 
 let initialized = false
+
+// Layer volumes (designed page; the test page never turns this on, so it
+// plays every layer at full volume as before, even from a shared project).
+let layerVolumesOn = false
+
+export function setLayerVolumesEnabled(on: boolean): void {
+  layerVolumesOn = on
+}
 
 // A recorded note is released this much before its last 16th ends, so a
 // following note on the same pitch starts cleanly instead of being cut.
@@ -38,16 +46,21 @@ function handleStepTime(time: number): void {
     if (layer.muted || isLayerSilencedAt(layer.id, time)) {
       continue
     }
+    const volume = layerVolumesOn ? getLayerVolume(layer) : 1
     if (layer.type === 'drum') {
       if (layer.hits.includes(step)) {
-        playDrum(layer.drum, time)
+        if (layerVolumesOn) {
+          playDrumAtVolume(layer.drum, time, volume)
+        } else {
+          playDrum(layer.drum, time)
+        }
       }
     }
     if (layer.type === 'melody') {
       for (const note of layer.notes) {
         if (note.step === step) {
           const duration = Math.max(0.02, note.length * stepSeconds - NOTE_GAP_SECONDS)
-          playMelodyNotes(layer.instrument, getNotesToPlay(layer.instrument, note.pitch), duration, time)
+          playMelodyNotes(layer.instrument, getNotesToPlay(layer.instrument, note.pitch), duration, time, volume)
         }
       }
     }

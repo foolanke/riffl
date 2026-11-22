@@ -1,5 +1,7 @@
 // Layer card (design.md 5.9): collapsed = number, sound, chevron right.
-// Expanded = header, RECORD, audio bar, sound (read-only), MUTE / DELETE row.
+// Expanded = header, RECORD, audio bar, volume, MUTE / DELETE row. The box
+// under the audio bar held the sound name (read-only); the human asked for
+// the layer's volume there instead, since the header already names it.
 // A draft card (not recorded yet) records a new take; a recorded card retakes it.
 import type { RecordStatus } from '../../../audio/recorder.ts'
 import { toggleLayerMuted } from '../../../project/projectStore.ts'
@@ -8,6 +10,7 @@ import { RecordButton } from '../components/RecordButton.tsx'
 import { releaseFocus } from '../components/releaseFocus.ts'
 import { ICONS } from '../icons.ts'
 import { AudioBar } from './AudioBar.tsx'
+import { LayerVolumeSlider } from './LayerVolumeSlider.tsx'
 import type { LayerItem } from './layerItems.ts'
 
 const RECORD_LABELS: Record<RecordStatus, string> = {
@@ -68,9 +71,11 @@ export function LayerCard(props: LayerCardProps) {
 
           <AudioBar layer={item.layer} />
 
-          {/* The sound is chosen once, from ADD LAYER, so here it is a
-              read-only label in the Select's box (same place and size). */}
-          <div className="select is-readonly text-item">{item.soundLabel.toUpperCase()}</div>
+          {/* Volume, in the box where the sound name used to be (same place and size). */}
+          <div className="select is-readonly layer-volume">
+            <span className="text-label color-muted">Volume</span>
+            <LayerVolumeSlider layer={item.layer} number={item.number} showValue />
+          </div>
 
           {/* Mute and delete (SPEC 1.6). A draft has nothing to mute yet. */}
           <div className="layer-card-actions">

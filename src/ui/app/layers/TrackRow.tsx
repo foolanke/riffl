@@ -9,6 +9,7 @@ import { releaseFocus } from '../components/releaseFocus.ts'
 import { ICONS } from '../icons.ts'
 import { useRecorder } from '../hooks/engineState.ts'
 import { getStepMap, getStepsInLoop } from './layerItems.ts'
+import { LayerVolumeSlider } from './LayerVolumeSlider.tsx'
 import type { LayerItem } from './layerItems.ts'
 import { ScoreStaff } from './ScoreStaff.tsx'
 
@@ -54,6 +55,11 @@ export function TrackRow(props: { item: LayerItem; settings: ProjectSettings; is
         >
           <img src={item.muted ? ICONS.volumeOff : ICONS.volumeOn} alt="" />
         </button>
+      ) : null}
+      {layer ? (
+        <div className="track-volume">
+          <LayerVolumeSlider layer={layer} number={item.number} />
+        </div>
       ) : null}
       <Tick />
       {layer && layer.type === 'melody' ? (

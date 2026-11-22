@@ -62,8 +62,32 @@
 
 /* Muted row (design.md 8): everything at 0.4 except the mute button, so
    it stays readable as the way back to unmuted. */
-.track-row.is-muted > :not(.track-mute) {
+.track-row.is-muted > :not(.track-mute):not(.track-volume) {
   opacity: 0.4;
+}
+
+/* Volume sliders (not designed; the human asked for them). The input uses
+   the Settings slider style (.settings-range). */
+.layer-volume {
+  gap: 12px;
+}
+
+.layer-volume-value {
+  width: 24px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.layer-volume-range:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.track-volume {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  width: 72px;
 }
 
 /* Mute toggle: a bare 16px volume icon button. Hover/focus follow design.md 8. */

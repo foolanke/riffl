@@ -15,6 +15,9 @@ const BASS_808_PLAYBACK_RATE = 0.85
 
 let players: Tone.Players | null = null
 let bass808Player: Tone.Player | null = null
+// Where quieter hits go: the same places the full-volume players play into.
+let bass808Input: Tone.ToneAudioNode | null = null
+const PLAYERS_VOLUME_DB = -6
 
 export async function loadSamples(): Promise<void> {
   if (players) {
@@ -28,7 +31,7 @@ export async function loadSamples(): Promise<void> {
   }
   players = new Tone.Players(urls).toDestination()
   // A little headroom so several layers hitting at once don't clip.
-  players.volume.value = -6
+  players.volume.value = PLAYERS_VOLUME_DB
 
   bass808Player = create808Player()
   await Tone.loaded()
@@ -46,6 +49,7 @@ function create808Player(): Tone.Player {
   const reverb = new Tone.Reverb({ decay: 5, preDelay: 0.02, wet: 0.45 }).connect(volume)
   const saturation = new Tone.Distortion({ distortion: 0.25, wet: 0.4 }).connect(reverb)
   const player = new Tone.Player(getSampleUrl(file)).connect(saturation)
+  bass808Input = saturation
   player.playbackRate = BASS_808_PLAYBACK_RATE
   return player
 }
@@ -76,4 +80,48 @@ export function playDrum(name: DrumName, time?: number): void {
   if (name === 'kick') {
     pumpAt(startTime) // house pump on the melody (masterBus.ts)
   }
+}
+
+// A drum at a layer's volume (0-1, designed page). Full volume plays the
+// normal way. Quieter hits play the same sample once through their own
+// gain, so another layer on the same drum keeps its own volume.
+export function playDrumAtVolume(name: DrumName, time: number, volume: number): void {
+  if (volume >= 1) {
+    playDrum(name, time)
+    return
+  }
+  if (!players || !bass808Player || !bass808Input || volume <= 0) {
+    return
+  }
+  if (name === 'bass808') {
+    playQuietSample(bass808Player.buffer, bass808Input, volume, time, BASS_808_PLAYBACK_RATE)
+    return
+  }
+  const quietGain = Tone.dbToGain(PLAYERS_VOLUME_DB) * volume
+  const buffer = players.player(name).buffer
+  const output = Tone.getDestination()
+  playQuietSample(buffer, output, quietGain, time, 1)
+  if (name === 'hihatRoll') {
+    playQuietSample(buffer, output, quietGain, time + Tone.Time('32n').toSeconds(), 1)
+  }
+  if (name === 'kick') {
+    pumpAt(time)
+  }
+}
+
+// One shot of a sample through a gain, cleaned up when it ends.
+function playQuietSample(
+  buffer: Tone.ToneAudioBuffer,
+  output: Tone.InputNode,
+  gainValue: number,
+  time: number,
+  playbackRate: number,
+): void {
+  const gain = new Tone.Gain(gainValue).connect(output)
+  const source = new Tone.ToneBufferSource({ url: buffer, playbackRate: playbackRate }).connect(gain)
+  source.onended = function () {
+    source.dispose()
+    gain.dispose()
+  }
+  source.start(time)
 }

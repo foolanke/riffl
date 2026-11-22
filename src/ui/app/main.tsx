@@ -7,6 +7,7 @@ import { setAccuratePinch } from '../../audio/liveMelody.ts'
 import { getRecorderState, setConfirmBoxMargin, subscribeToRecorder } from '../../audio/recorder.ts'
 import type { TakeReport } from '../../audio/recorder.ts'
 import { setChordKey } from '../../audio/instruments.ts'
+import { setLayerVolumesEnabled } from '../../audio/layerPlayer.ts'
 import { getProject, subscribeToProject } from '../../project/projectStore.ts'
 import { initAutoSave } from '../../project/saveLoad.ts'
 import { setFastFrames } from '../../vision/handTracking.ts'
@@ -57,6 +58,9 @@ function applyProjectKey() {
 }
 applyProjectKey()
 subscribeToProject(applyProjectKey)
+
+// Each layer plays at its own volume (sliders on the cards and the Layers panel).
+setLayerVolumesEnabled(true)
 
 // Drum takes: ignore the ringing right after a tap (it was adding a second
 // note on the next 16th), and check the camera against a box with some room

@@ -30,6 +30,9 @@ export interface DrumLayer {
   type: 'drum'
   id: string
   muted: boolean
+  // 0-1, set on the designed page (Layers panel and card sliders). Missing
+  // = full volume, so older saves and the test page play as before.
+  volume?: number
   drum: DrumName
   hits: number[]
   // The object this take was played on (step 24), so a retake checks the
@@ -48,6 +51,7 @@ export interface MelodyLayer {
   type: 'melody'
   id: string
   muted: boolean
+  volume?: number // 0-1, see DrumLayer.volume
   instrument: InstrumentName
   notes: MelodyNote[]
 }
@@ -404,6 +408,26 @@ export function toggleLayerMuted(layerId: string): void {
     }
   }
   setProject({ ...currentProject, layers: updated })
+}
+
+// A layer's playback volume, 0-1 (designed page). Not an undo step: undo
+// is for takes (SPEC 1.6).
+export function setLayerVolume(layerId: string, volume: number): void {
+  const clamped = Math.min(1, Math.max(0, volume))
+  const updated: Layer[] = []
+  for (const layer of currentProject.layers) {
+    if (layer.id === layerId) {
+      updated.push({ ...layer, volume: clamped })
+    } else {
+      updated.push(layer)
+    }
+  }
+  setProject({ ...currentProject, layers: updated })
+}
+
+// Full volume for layers that never had one set.
+export function getLayerVolume(layer: Layer): number {
+  return layer.volume === undefined ? 1 : layer.volume
 }
 
 // For keys 1-9 (SPEC 0.6). Index 0 = layer 1. Does nothing if no such layer.

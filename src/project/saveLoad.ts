@@ -170,7 +170,19 @@ function parseDrumLayer(item: Record<string, unknown>): DrumLayer | null {
   if (typeof item.objectId === 'string') {
     layer.objectId = item.objectId
   }
+  const volume = parseVolume(item.volume)
+  if (volume !== null) {
+    layer.volume = volume
+  }
   return layer
+}
+
+// A layer volume from a save: a number 0-1, or null (none saved).
+function parseVolume(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return null
+  }
+  return Math.min(1, Math.max(0, value))
 }
 
 function parseMelodyLayer(item: Record<string, unknown>): MelodyLayer | null {
@@ -189,13 +201,18 @@ function parseMelodyLayer(item: Record<string, unknown>): MelodyLayer | null {
       notes.push({ step: note.step, length: note.length as number, pitch: note.pitch })
     }
   }
-  return {
+  const layer: MelodyLayer = {
     type: 'melody',
     id: parseLayerId(item),
     instrument: instrument,
     notes: notes,
     muted: item.muted === true,
   }
+  const volume = parseVolume(item.volume)
+  if (volume !== null) {
+    layer.volume = volume
+  }
+  return layer
 }
 
 function parseLayerId(item: Record<string, unknown>): string {

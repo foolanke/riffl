@@ -24,7 +24,7 @@ export interface MelodyVoice {
 interface NotePlayer {
   triggerAttack(notes: string[], time: number): unknown
   triggerRelease(notes: string[], time: number): unknown
-  triggerAttackRelease(notes: string[], duration: number, time: number): unknown
+  triggerAttackRelease(notes: string[], duration: number, time: number, velocity?: number): unknown
 }
 
 const voices = new Map<InstrumentName, Record<HandSide, MelodyVoice>>()
@@ -156,10 +156,18 @@ export async function loadMelodyInstruments(): Promise<void> {
 }
 
 // Plays one recorded note (all the notes of one gesture) for a set time.
-export function playMelodyNotes(instrument: InstrumentName, notes: string[], durationSeconds: number, time: number): void {
+// volume 0-1 is the layer's volume, played as the note velocity (Tone
+// scales the note's loudness by it); 1 = as before.
+export function playMelodyNotes(
+  instrument: InstrumentName,
+  notes: string[],
+  durationSeconds: number,
+  time: number,
+  volume: number = 1,
+): void {
   const player = layerPlayers.get(instrument)
   if (player) {
-    player.triggerAttackRelease(notes, durationSeconds, time)
+    player.triggerAttackRelease(notes, durationSeconds, time, volume)
   }
 }
 
